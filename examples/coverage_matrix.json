@@ -1,0 +1,42 @@
+{
+  "matrix_id": "lab-core-coverage",
+  "version": "1.0.0",
+  "requirements": [
+    {
+      "requirement_id": "correct-tool",
+      "description": "The runtime selects the expected tools.",
+      "evaluator_ids": ["tool.selection_accuracy"],
+      "evidence_fields": ["trace.tool_calls.name"],
+      "case_ids": ["case-tool-selection"],
+      "gate": "soft",
+      "tags": ["tooling"]
+    },
+    {
+      "requirement_id": "protected-arguments",
+      "description": "Protected tool arguments stay unchanged.",
+      "evaluator_ids": ["safety.protected_argument_integrity"],
+      "evidence_fields": ["trace.tool_calls.arguments"],
+      "case_ids": ["case-protected-argument"],
+      "gate": "hard",
+      "tags": ["safety"]
+    },
+    {
+      "requirement_id": "cross-turn-numbers",
+      "description": "Repeated labelled numeric claims stay consistent.",
+      "evaluator_ids": ["session.cross_turn_numerical_consistency"],
+      "evidence_fields": ["trace.turns.output_text"],
+      "case_ids": ["case-numerical-consistency"],
+      "gate": "hard",
+      "tags": ["session"]
+    },
+    {
+      "requirement_id": "latency-budget",
+      "description": "The trace stays within the declared latency budget.",
+      "evaluator_ids": ["operational.latency_budget"],
+      "evidence_fields": ["trace.started_at", "trace.ended_at"],
+      "case_ids": ["case-latency-budget"],
+      "gate": "soft",
+      "tags": ["operations"]
+    }
+  ]
+}

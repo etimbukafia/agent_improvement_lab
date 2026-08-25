@@ -1,0 +1,100 @@
+{
+  "dataset_id": "calculator-demo",
+  "version": "1.0.0",
+  "description": "Small arithmetic cases for the Lab improvement cycle.",
+  "cases": [
+    {
+      "case_id": "add",
+      "dataset_id": "calculator-demo",
+      "dataset_version": "1.0.0",
+      "split": "development",
+      "risk": "low",
+      "tags": ["arithmetic", "tool-use"],
+      "input": {"expression": "2 + 2"},
+      "expected": {"result": "4"},
+      "tool_expectations": [
+        {
+          "name": "calculator",
+          "order": 0,
+          "required_arguments": ["expression"],
+          "exact_arguments": {"expression": "2 + 2"},
+          "argument_types": {"expression": "string"},
+          "protected_arguments": ["expression"]
+        }
+      ],
+      "provenance": {
+        "source": "calculator-example",
+        "source_ref": "add",
+        "collected_at": "2026-08-24T12:00:00+00:00"
+      },
+      "metadata": {
+        "workflow": "arithmetic",
+        "expected_behavior": "Use the calculator tool and report the result."
+      }
+    },
+    {
+      "case_id": "multiply",
+      "dataset_id": "calculator-demo",
+      "dataset_version": "1.0.0",
+      "split": "development",
+      "risk": "low",
+      "tags": ["arithmetic", "tool-use"],
+      "input": {"expression": "3 * 4"},
+      "expected": {"result": "12"},
+      "tool_expectations": [
+        {
+          "name": "calculator",
+          "order": 0,
+          "required_arguments": ["expression"],
+          "exact_arguments": {"expression": "3 * 4"},
+          "argument_types": {"expression": "string"},
+          "protected_arguments": ["expression"]
+        }
+      ],
+      "provenance": {
+        "source": "calculator-example",
+        "source_ref": "multiply",
+        "collected_at": "2026-08-24T12:00:00+00:00"
+      },
+      "metadata": {
+        "workflow": "arithmetic",
+        "expected_behavior": "Use the calculator tool and report the result."
+      }
+    },
+    {
+      "case_id": "subtract-holdout",
+      "dataset_id": "calculator-demo",
+      "dataset_version": "1.0.0",
+      "split": "holdout",
+      "risk": "low",
+      "tags": ["arithmetic", "holdout"],
+      "input": {"expression": "9 - 5"},
+      "expected": {"result": "4"},
+      "tool_expectations": [
+        {
+          "name": "calculator",
+          "order": 0,
+          "required_arguments": ["expression"],
+          "exact_arguments": {"expression": "9 - 5"},
+          "argument_types": {"expression": "string"},
+          "protected_arguments": ["expression"]
+        }
+      ],
+      "provenance": {
+        "source": "calculator-example",
+        "source_ref": "subtract-holdout",
+        "collected_at": "2026-08-24T12:00:00+00:00"
+      },
+      "metadata": {
+        "workflow": "arithmetic",
+        "expected_behavior": "Use the calculator tool and report the result."
+      }
+    }
+  ],
+  "provenance": {
+    "source": "calculator-example",
+    "source_ref": "phase-6",
+    "collected_at": "2026-08-24T12:00:00+00:00"
+  },
+  "created_at": "2026-08-24T12:00:00+00:00"
+}

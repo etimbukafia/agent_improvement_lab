@@ -2,7 +2,7 @@
 
 ## Summary
 
-The current Agent Improvement Lab has a strong evaluation lifecycle.
+The current Enterprise Agent Improvement Lab has a strong evaluation lifecycle.
 
 The enterprise transition should preserve that lifecycle and redesign the narrow domain contracts around it.
 
@@ -216,22 +216,23 @@ Do not build adapters that preserve obsolete domain concepts after the enterpris
 
 ## Phase 1 readiness
 
-Phase 1 is ready to begin.
+Phase 1 is complete, and the subsequent enterprise contract migration has
+reached the point where the old domain APIs no longer have live consumers.
 
-The first implementation target should be the generic enterprise execution trace.
+The generic enterprise execution trace is now the runtime and evaluator
+boundary.
 
 Phase 1 should not redesign candidates or cases at the same time.
 
 The trace contract must settle first because evaluators, runtime adapters, state evidence, approvals, and later comparison logic all depend on it.
 
-## Phase 1 blockers
+## Migration closure
 
-No architecture blocker was found.
+No architecture blocker was found. The temporary conversion path used during
+the migration has been removed from the public API. Persisted field aliases
+remain only where they are bounded wire-format readers; see
+`docs/API_MIGRATION.md` for the exact mapping.
 
-Before implementation, Phase 1 should define one explicit decision:
-
-> whether the new enterprise trace replaces `AgentTrace` immediately or exists beside it with a temporary conversion path.
-
-Preferred approach:
-
-Introduce the new enterprise trace beside the existing conversational trace, add deterministic conversion, migrate consumers, then remove the old root model when no longer needed.
+The chosen approach was to introduce the enterprise trace beside the
+conversational trace, migrate consumers, prove the migration with behavior and
+API-surface tests, and then remove the old root model and runner modules.

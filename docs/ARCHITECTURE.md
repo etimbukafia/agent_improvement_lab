@@ -1,8 +1,8 @@
-# Enterprise Agent Improvement Lab Architecture
+# Enterprise Enterprise Agent Improvement Lab Architecture
 
 ## Purpose
 
-Enterprise Agent Improvement Lab is a provider-neutral system for controlled evaluation and improvement of enterprise AI agents.
+Enterprise Enterprise Agent Improvement Lab is a provider-neutral system for controlled evaluation and improvement of enterprise AI agents.
 
 It answers two questions:
 
@@ -13,7 +13,7 @@ The Lab does not run production agents. It does not deploy agents. It does not o
 
 ## Responsibility boundaries
 
-### Enterprise Agent Improvement Lab
+### Enterprise Enterprise Agent Improvement Lab
 
 The Lab owns:
 
@@ -59,12 +59,12 @@ Applications own:
 
 The current project has strong foundations:
 
-- a small `AgentRuntime` adapter boundary;
+- a small `EnterpriseRuntime` adapter boundary;
 - versioned datasets;
 - immutable candidate artifacts;
 - typed traces and summaries;
 - deterministic evaluators;
-- optional Pydantic Evals execution;
+- provider-neutral enterprise evaluation execution;
 - failure mining and annotations;
 - baseline comparison;
 - holdout evaluation;
@@ -80,6 +80,10 @@ The main constraints are model assumptions, not the evaluation lifecycle.
 ### Conversational trace assumption
 
 `AgentTrace` is built around turns, text input, text output, and tool calls.
+
+This is now a historical migration concern. The live Lab surface uses
+`ExecutionTrace`; conversational evidence is represented by typed
+`MessageEvent` and `ToolCallEvent` values.
 
 Enterprise agents also need to represent:
 
@@ -124,7 +128,7 @@ Enterprise Agent Harness
 Harness integration adapter
         │
         ▼
-Enterprise Agent Improvement Lab
+Enterprise Enterprise Agent Improvement Lab
         │
         ├── Evaluation
         ├── Failure mining
@@ -191,13 +195,15 @@ Keep typed events. Do not replace domain contracts with untyped metadata diction
 
 The Lab must continue to accept external runtimes through a small protocol.
 
-The core protocol should describe:
+The core `EnterpriseRuntime` protocol describes:
 
 - runtime identity;
 - execution of one evaluation case against one candidate;
 - return of a Lab-compatible execution trace.
 
 Harness-specific translation belongs under `integrations/`.
+The optional Pydantic Evals adapter is lazy and provider-specific. It is not a
+dependency of core contracts, storage, comparison, or promotion.
 
 ## Evaluation boundary
 
@@ -226,7 +232,26 @@ APPROVED or REJECTED
 RETIRED
 ```
 
-Later phases can add shadow and canary states.
+The controlled lifecycle is:
+
+```text
+DRAFT
+  ↓
+OFFLINE_EVALUATED
+  ↓
+SHADOW
+  ↓
+CANARY
+  ↓
+APPROVED
+  ↓
+ACTIVE
+  ↓
+RETIRED
+```
+
+Shadow and canary records contain evidence only. They do not deploy or route
+production traffic.
 
 A candidate must have immutable lineage from:
 
@@ -283,7 +308,7 @@ Core contains:
 Integrations contain:
 
 - Enterprise Agent Harness adapter;
-- Pydantic Evals runner adapter;
+- optional Pydantic Evals adapter;
 - external judge providers;
 - production trace ingestion adapters;
 - storage implementations that need external systems.

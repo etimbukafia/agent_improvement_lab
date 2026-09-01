@@ -1,4 +1,4 @@
-# Enterprise Agent Improvement Lab v0.1 Non-Goals
+# Enterprise Enterprise Agent Improvement Lab v0.1 Non-Goals
 
 The first enterprise release must stay focused.
 

@@ -1,4 +1,4 @@
-# Enterprise Agent Improvement Lab Migration Map
+# Enterprise Enterprise Agent Improvement Lab Migration Map
 
 This map classifies the current project by what should happen during the enterprise transition.
 
@@ -13,8 +13,8 @@ This map classifies the current project by what should happen during the enterpr
 | `contracts/sessions.py` | Session-level evaluation | Keep where useful for conversational/session agents | KEEP | `contracts/sessions.py` | Low | Later |
 | `contracts/calibration.py` | Judge calibration contracts | Preserve provider-neutral judge calibration | KEEP | same | Low | Later |
 | `runtime.py` | Small runtime protocol | Generic enterprise runtime adapter protocol | GENERALIZE | `runtime.py` | High | 1, 4 |
-| `runner.py` | Pydantic Evals-backed evaluation runner | Runner abstraction with Pydantic as one backend | GENERALIZE | `runners/` | High | 20 |
-| `candidates.py` | Constrained prompt/config candidate generation | Specialized bounded enterprise candidate builders | REDESIGN | `candidates/` or `builders/` | High | 12 |
+| `runner.py` | Pydantic Evals-backed evaluation runner | `EnterpriseEvaluationRunner` over `EnterpriseRuntime` | DEPRECATE | Removed after consumer migration; use `enterprise_runner.py` | High | Complete |
+| `candidates.py` | Constrained prompt/config candidate generation | Specialized bounded enterprise candidate builders | DEPRECATE | Removed after consumer migration; use `candidate_builders.py` | High | Complete |
 | `comparison.py` | Baseline/candidate comparison | Enterprise-aware regressions and business/security dimensions | GENERALIZE | `comparison.py` | High | 13 |
 | `promotion.py` | Promotion eligibility and decision services | Risk-aware enterprise promotion evidence | GENERALIZE | `promotion.py` | High | 14 |
 | `failure_mining.py` | Failure normalization and clustering | Add root-cause inputs and enterprise components | GENERALIZE | `failure_mining.py` | Medium | 9-10 |
@@ -35,11 +35,13 @@ This map classifies the current project by what should happen during the enterpr
 | `datasets.py` | Dataset validation and helpers | Preserve and extend for enterprise cases | GENERALIZE | same | Medium | 6 |
 | `examples/calculator_agent` | Deterministic reference example | Preserve as regression example, add enterprise vertical slice later | KEEP | `examples/` | Low | v0.1 slice |
 | `pyproject.toml` | Package and dependency metadata | Keep package name until enterprise contracts are real | KEEP | same | Low | 22 |
-| package name | `agent_improvement_lab` | Rename only after architecture transition | REPLACE LATER | `enterprise_agent_improvement_lab` | Medium | 22 |
+| package name | `enterprise_agent_improvement_lab` | Rename only after architecture transition | REPLACE LATER | `enterprise_enterprise_agent_improvement_lab` | Medium | 22 |
+| `integrations/enterprise_agent_harness/` | Harness boundary adapter | Translate Harness definitions and execution evidence | KEEP | `integrations/enterprise_agent_harness/` | High | 4-5 |
 
 ## Main migration rule
 
-Do not replace stable evaluation lifecycle code because the current models are narrow.
+Do not replace stable evaluation lifecycle code merely because the original
+models were narrow.
 
 Change the domain models first. Then adapt services around them.
 
@@ -47,7 +49,9 @@ Change the domain models first. Then adapt services around them.
 
 Do not build a large backward-compatibility layer.
 
-Use temporary conversion helpers where they protect the current calculator example during migration.
+Use temporary parsing or wire-format helpers only where they protect persisted
+data during migration. Do not retain old domain classes after their consumers
+have moved.
 
 The main compatibility target is behavioral proof, not permanent legacy APIs.
 
@@ -60,4 +64,6 @@ The main compatibility target is behavioral proof, not permanent legacy APIs.
 5. Comparison and promotion semantics.
 6. Runner abstraction.
 
-These need explicit review before implementation proceeds.
+These received explicit review during the migration. The old public classes
+and runner modules are removed; the canonical enterprise contracts are now the
+implementation surface.

@@ -1,4 +1,4 @@
-# Enterprise Agent Improvement Lab v0.1 Scope
+# Enterprise Enterprise Agent Improvement Lab v0.1 Scope
 
 ## Goal
 

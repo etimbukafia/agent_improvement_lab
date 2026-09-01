@@ -1,18 +1,21 @@
-"""Deterministic calculator runtime used by the Phase 6 example."""
+"""Deterministic calculator runtime used by the enterprise example."""
 
 from __future__ import annotations
 
 import ast
 from decimal import Decimal
 
-from agent_improvement_lab.contracts.candidates import AgentCandidate
-from agent_improvement_lab.contracts.cases import EvaluationCaseRef
-from agent_improvement_lab.contracts.traces import (
-    AgentTrace,
-    ObservedToolCall,
-    ObservedTurn,
+from enterprise_agent_improvement_lab.contracts.candidates import EnterpriseAgentCandidate
+from enterprise_agent_improvement_lab.contracts.cases import EnterpriseEvaluationCase
+from enterprise_agent_improvement_lab.contracts.traces import (
+    ExecutionEventRecord,
+    ExecutionTrace,
+    MessageEvent,
+    ToolCallEvent,
     ToolCallOutcome,
+    TriggerInfo,
 )
+from enterprise_agent_improvement_lab.environment import EvaluationEnvironment
 
 
 class CalculatorRuntime:
@@ -21,47 +24,66 @@ class CalculatorRuntime:
     name = "calculator-agent"
     version = "1.0.0"
 
-    async def execute(self, case: EvaluationCaseRef, candidate: AgentCandidate) -> AgentTrace:
+    async def execute(
+        self,
+        case: EnterpriseEvaluationCase,
+        candidate: EnterpriseAgentCandidate,
+        environment: EvaluationEnvironment,
+    ) -> ExecutionTrace:
+        del environment
+        if not isinstance(case.input, dict) or "expression" not in case.input:
+            raise ValueError("Calculator cases need an expression input")
         expression = str(case.input["expression"])
         timestamp = case.provenance.collected_at
         if timestamp is None:
             raise ValueError("Calculator cases need a collected_at timestamp")
-        uses_tool = candidate.metadata.get("calculator_mode") == "tool"
+        mode = candidate.metadata.get("calculator_mode")
+        uses_tool = mode == "tool" or (mode is None and "calculator" in candidate.tools)
         result = _calculate(expression)
-        tool_calls: tuple[ObservedToolCall, ...]
-        if uses_tool:
-            call = ObservedToolCall(
-                call_id=f"{case.case_id}-calculator",
+        events: list[ExecutionEventRecord] = [
+            MessageEvent(
+                event_id=f"{case.case_id}-input",
                 sequence=0,
-                name="calculator",
-                arguments={"expression": expression},
-                outcome=ToolCallOutcome.SUCCESS,
-                result_summary=result,
-                started_at=timestamp,
-                ended_at=timestamp,
+                timestamp=timestamp,
+                message_id=f"{case.case_id}-input",
+                role="user",
+                message_summary="Arithmetic expression received.",
             )
-            output = f"Result: {result}"
-            tool_calls = (call,)
-        else:
-            output = f"Result: {result}"
-            tool_calls = ()
-        turn = ObservedTurn(
-            turn_id=f"{case.case_id}-turn-0",
-            sequence=0,
-            input_text=f"Calculate {expression}.",
-            output_text=output,
-            tool_calls=tool_calls,
-            started_at=timestamp,
-            ended_at=timestamp,
+        ]
+        if uses_tool:
+            events.append(
+                ToolCallEvent(
+                    event_id=f"{case.case_id}-calculator",
+                    sequence=1,
+                    timestamp=timestamp,
+                    call_id=f"{case.case_id}-calculator",
+                    name="calculator",
+                    arguments={"expression": expression},
+                    outcome=ToolCallOutcome.SUCCESS,
+                    result_summary=f"Calculated result: {result}",
+                )
+            )
+        events.append(
+            MessageEvent(
+                event_id=f"{case.case_id}-output",
+                sequence=len(events),
+                timestamp=timestamp,
+                message_id=f"{case.case_id}-output",
+                role="assistant",
+                message_summary=f"Result: {result}",
+            )
         )
-        return AgentTrace(
-            trace_id=f"{candidate.candidate_id}:{case.case_id}",
-            case_id=case.case_id,
+        return ExecutionTrace(
+            execution_id=f"{candidate.candidate_id}:{case.case_id}",
+            agent_id=candidate.agent_id,
+            agent_version=candidate.agent_version or candidate.version,
             candidate_id=candidate.candidate_id,
+            case_id=case.case_id,
             session_id=f"calculator-demo:{candidate.candidate_id}",
+            trigger=case.trigger or TriggerInfo(kind="conversation", source="calculator-example"),
             started_at=timestamp,
             ended_at=timestamp,
-            turns=(turn,),
+            events=tuple(events),
             metadata={"node": "calculator.answer", "runtime_component": "calculator"},
         )
 

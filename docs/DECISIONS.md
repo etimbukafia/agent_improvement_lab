@@ -1,4 +1,4 @@
-# Enterprise Agent Improvement Lab Decisions
+# Enterprise Enterprise Agent Improvement Lab Decisions
 
 ## Decision 1 — Keep the Lab library-first
 
@@ -23,7 +23,7 @@ Integration code must remain well-defined so the library does not become too abs
 ## Decision 2 — Keep runtime execution outside the Lab
 
 ### Context
-The current `AgentRuntime` protocol already separates execution from evaluation.
+The `EnterpriseRuntime` protocol separates execution from evaluation.
 
 ### Decision
 The Lab evaluates runtime evidence. It does not own agent execution.
@@ -36,6 +36,9 @@ Runtime safety and evaluation stay separate.
 
 ### Risks
 Adapters must preserve enough runtime evidence for valid evaluation.
+
+The old conversation-shaped runtime and runner APIs are migration history, not
+supported extension points.
 
 ---
 
@@ -180,7 +183,30 @@ Snapshot identity rules must be stable.
 
 ---
 
-## Decision 10 — Support stateful evaluation environments
+## Decision 10 — Remove legacy domain APIs after consumer migration
+
+### Context
+The enterprise contracts were introduced beside the conversation- and
+prompt-shaped contracts so existing consumers could migrate safely.
+
+### Decision
+Once the Lab's internal consumers, example, and tests use the enterprise
+contracts, remove the old domain classes and modules. Retain only bounded
+wire-format aliases needed to read stored data, and do not expose compatibility
+classes as the public API.
+
+### Consequences
+The public surface is explicit: `ExecutionTrace`,
+`EnterpriseAgentCandidate`, `EnterpriseEvaluationCase`,
+`EnterpriseEvaluationRunner`, and typed enterprise comparison APIs.
+
+### Risks
+Downstream imports of removed APIs fail at import time. The migration map and
+API migration tests make that break explicit and auditable.
+
+---
+
+## Decision 11 — Support stateful evaluation environments
 
 ### Context
 Enterprise agents can perform writes and external side effects.
@@ -199,7 +225,7 @@ Test environments can diverge from production behavior.
 
 ---
 
-## Decision 11 — Prefer deterministic evaluators
+## Decision 12 — Prefer deterministic evaluators
 
 ### Context
 Many enterprise requirements can be calculated from traces and state.
@@ -218,7 +244,7 @@ Some quality outcomes cannot be reduced to deterministic checks.
 
 ---
 
-## Decision 12 — Use subjective judges only when needed
+## Decision 13 — Use subjective judges only when needed
 
 ### Context
 Some semantic quality checks need judgment.
@@ -238,7 +264,7 @@ Judge drift and provider variance remain possible.
 
 ---
 
-## Decision 13 — Preserve explicit human promotion authority
+## Decision 14 — Preserve explicit human promotion authority
 
 ### Context
 The current system separates promotion eligibility from human decision.
@@ -257,30 +283,34 @@ Human review can slow promotion.
 
 ---
 
-## Decision 14 — Make Pydantic Evals one runner backend
+## Decision 15 — Keep framework runners outside the Lab core
 
 ### Context
-The current runner is coupled to Pydantic Evals.
+Pydantic Evals is useful to applications, but a framework-specific runner
+would couple the Lab's public domain APIs to one execution library.
 
 ### Decision
-Preserve that integration, but move toward a generic runner protocol.
+Keep framework runners in application or integration packages. The Lab exposes
+`EnterpriseRuntime` and `EnterpriseEvaluationRunner` and accepts typed
+enterprise traces at that boundary.
 
 ### Alternatives considered
 - Remove Pydantic Evals.
 - Keep it as the permanent architecture boundary.
 
 ### Consequences
-The Lab can later support replay, shadow, or distributed runners.
+Applications can use Pydantic Evals, replay, shadow, or distributed runners
+without changing Lab core contracts.
 
 ### Risks
-Do not add the abstraction before it is needed by the migration.
+Each adapter must preserve event identity, ordering, and safe evidence.
 
 ---
 
-## Decision 15 — Delay the package rename
+## Decision 16 — Delay the package rename
 
 ### Context
-The current package is still structurally the Agent Improvement Lab.
+The current package is still structurally the Enterprise Agent Improvement Lab.
 
 ### Decision
 Rename only after enterprise contracts and workflows exist.

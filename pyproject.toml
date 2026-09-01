@@ -3,7 +3,7 @@ requires = ["hatchling==1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agent-improvement-lab"
+name = "enterprise-agent-improvement-lab"
 version = "0.1.0"
 description = "Evaluation and controlled improvement tools for AI agents"
 readme = "README.md"
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-agent-improvement-lab = "agent_improvement_lab.cli:main"
+enterprise-agent-improvement-lab = "enterprise_agent_improvement_lab.cli:main"
 
 [project.optional-dependencies]
 test = ["pytest==9.1.1"]
@@ -27,7 +27,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agent_improvement_lab"]
+packages = ["src/enterprise_agent_improvement_lab"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
@@ -48,7 +48,7 @@ indent-style = "space"
 [tool.mypy]
 python_version = "3.11"
 mypy_path = "src"
-packages = ["agent_improvement_lab"]
+packages = ["enterprise_agent_improvement_lab"]
 check_untyped_defs = true
 disallow_untyped_defs = true
 no_implicit_optional = true

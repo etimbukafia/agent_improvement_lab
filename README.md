@@ -1,6 +1,6 @@
-# Agent Improvement Lab
+# Enterprise Agent Improvement Lab
 
-Agent Improvement Lab is a small self-improvement stack for AI agents. It turns
+Enterprise Agent Improvement Lab is a small self-improvement stack for AI agents. It turns
 evaluation cases and observed agent behavior into reviewable failures, bounded
 candidate changes, reproducible comparisons, and human-controlled promotion
 decisions.
@@ -52,7 +52,7 @@ python -m examples.calculator_agent.run_cycle
 ```text
 docs/                         product brief, non-goals, and architecture decisions
 examples/                     coverage artifact and calculator-agent example
-src/agent_improvement_lab/    installable core package
+src/enterprise_agent_improvement_lab/    installable core package
 ```
 
 ## License

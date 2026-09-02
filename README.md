@@ -1,34 +1,80 @@
 # Enterprise Agent Improvement Lab
 
-Enterprise Agent Improvement Lab is a small self-improvement stack for AI agents. It turns
-evaluation cases and observed agent behavior into reviewable failures, bounded
-candidate changes, reproducible comparisons, and human-controlled promotion
-decisions.
+Enterprise Agent Improvement Lab evaluates enterprise AI agents, diagnoses failures, creates bounded improvement plans, compares candidate versions, and produces evidence for human-controlled promotion.
 
-The Lab is deliberately a library first. An agent runtime connects through a
-small adapter boundary, while the Lab owns the contracts, deterministic
-evaluation evidence, experiment records, and improvement workflow.
+The Lab is library-first and provider-neutral. Agent runtimes connect through small adapter boundaries. The Lab owns evaluation contracts, evidence, failure analysis, controlled improvement logic, comparison, and promotion records.
+
+The Lab does not deploy agents or enforce production runtime policy. Those responsibilities stay with the runtime, such as Enterprise Agent Harness.
 
 ## What it does
 
-- validates versioned evaluation datasets and immutable prompt artifacts;
-- stores typed traces, session summaries, scores, failures, and experiment
-  manifests;
-- runs deterministic checks alongside explicitly marked subjective judges;
-- groups failures into actionable improvement work;
-- compares a candidate with a baseline and records promotion or rollback
-  decisions;
-- exposes CLI workflows and read-only dashboard query services;
-- includes a deterministic calculator-agent improvement cycle.
+- validates versioned enterprise evaluation datasets and typed expectations;
+- records typed execution traces for messages, tools, state, approvals, delegation, workflows, retrieval, and errors;
+- runs deterministic evaluators and explicit subjective judges where required;
+- mines failures and groups them into reviewable failure clusters;
+- creates evidence-backed root-cause hypotheses;
+- plans bounded improvements within explicit improvement scopes;
+- builds typed candidate changes for prompts, tools, policies, routing, models, workflows, capabilities, approvals, and related configuration;
+- compares candidates with baselines across quality, safety, authorization, state integrity, workflow, reliability, cost, and business outcomes;
+- applies risk-aware promotion gates while keeping the final promotion decision human-controlled;
+- supports offline, replay, shadow, and controlled canary evaluation evidence;
+- governs evidence with redaction, retention, and tenant-boundary contracts;
+- persists evaluation records through storage ports with SQLite as the included implementation;
+- exposes CLI review workflows and read-only dashboard query services.
 
-The core package does not orchestrate an agent, import an agent framework, or
-deploy a model. Those concerns belong behind adapters or in the application
-using the Lab.
+## Core flow
+
+```text
+EnterpriseEvaluationCase
+        ↓
+EnterpriseRuntime
+        ↓
+ExecutionTrace
+        ↓
+Evaluation
+        ↓
+EvaluationFailure
+        ↓
+FailureCluster
+        ↓
+RootCauseHypothesis
+        ↓
+ImprovementPlan
+        ↓
+Bounded candidate change
+        ↓
+Baseline comparison
+        ↓
+Risk-aware promotion evidence
+        ↓
+Human decision
+```
+
+## Runtime boundary
+
+The Lab core does not import an agent framework or own production execution.
+
+Applications can implement `EnterpriseRuntime` directly or use an integration adapter. Enterprise Agent Harness remains outside the Lab core and can provide runtime, registry, approval, policy, tool, and execution evidence through that boundary.
+
+See `docs/INTEGRATION_GUIDE.md` for the runtime integration model.
+
+## Evaluation design
+
+The Lab prefers deterministic evaluation when a requirement can be calculated from traces, state, or explicit expectations.
+
+Subjective judges stay explicit and separate from deterministic evidence. A score does not replace the evidence that supports it.
+
+## Controlled improvement
+
+Candidate improvement is bounded by `ImprovementScope`.
+
+The Lab can recommend and construct typed changes, but it does not generate unrestricted executable code. Protected datasets, evaluators, promotion rules, policies, permissions, and other protected resources remain outside the allowed change scope.
+
+Promotion eligibility is computed from evidence. Human approval remains the final authority.
 
 ## Development
 
-The repository targets Python 3.11–3.14. The local development interpreter is
-recorded in `.python-version`.
+The repository targets Python 3.11–3.14. The local development interpreter is recorded in `.python-version`.
 
 ```text
 python -m pip install -e ".[dev]"
@@ -36,12 +82,12 @@ python -m ruff format --check src tests examples
 python -m ruff check src tests examples
 python -m mypy src examples
 python -m pytest
+python -m compileall -q src tests examples
 ```
 
-The same commands run in the repository quality workflow. `python -m compileall
--q src tests examples` is a useful additional smoke check.
+The same quality checks run in GitHub Actions.
 
-Run the calculator cycle without a model key:
+Run the deterministic calculator reference cycle without a model key:
 
 ```text
 python -m examples.calculator_agent.run_cycle
@@ -50,10 +96,26 @@ python -m examples.calculator_agent.run_cycle
 ## Repository map
 
 ```text
-docs/                         product brief, non-goals, and architecture decisions
-examples/                     coverage artifact and calculator-agent example
-src/enterprise_agent_improvement_lab/    installable core package
+docs/                                   architecture, decisions, migration, and integration guides
+examples/                               deterministic reference examples
+src/enterprise_agent_improvement_lab/   installable core package
+src/enterprise_agent_improvement_lab/integrations/  external runtime integrations
+src/enterprise_agent_improvement_lab/evaluators/    evaluator catalog
+tests/                                  behavior and integration tests
 ```
+
+## Key documentation
+
+- `docs/ARCHITECTURE.md` — product and system boundaries.
+- `docs/DECISIONS.md` — architecture decisions.
+- `docs/INTEGRATION_GUIDE.md` — runtime integration guide.
+- `docs/API_MIGRATION.md` — canonical enterprise API migration.
+- `docs/PYDANTIC_EVALS.md` — optional Pydantic Evals integration.
+- `docs/NON_GOALS.md` — explicit product limits.
+
+## Version
+
+Current package version: `0.1.0`.
 
 ## License
 

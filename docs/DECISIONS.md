@@ -1,9 +1,9 @@
-# Enterprise Enterprise Agent Improvement Lab Decisions
+# Enterprise Agent Improvement Lab Decisions
 
 ## Decision 1 — Keep the Lab library-first
 
 ### Context
-The current project is a small installable library with explicit contracts and services.
+The current project is an installable library with explicit contracts and services.
 
 ### Decision
 Keep the Lab library-first.
@@ -37,30 +37,29 @@ Runtime safety and evaluation stay separate.
 ### Risks
 Adapters must preserve enough runtime evidence for valid evaluation.
 
-The old conversation-shaped runtime and runner APIs are migration history, not
-supported extension points.
+The old conversation-shaped runtime and runner APIs are migration history, not supported extension points.
 
 ---
 
-## Decision 3 — Introduce a generic enterprise execution trace
+## Decision 3 — Use a generic enterprise execution trace
 
 ### Context
-The current trace model is centered on conversational turns.
+The original trace model centered on conversational turns.
 
 ### Decision
-Introduce a generic ordered enterprise execution trace.
+Use a generic ordered enterprise execution trace.
 
 ### Alternatives considered
-- Keep `ObservedTurn` as the root model.
-- Store all enterprise events in metadata.
+- Keep conversational turns as the root model.
+- Store enterprise events only in metadata.
 
 ### Consequences
-The Lab can represent background, workflow, approval, and write-capable agents.
+The Lab can represent background, workflow, approval, delegation, and write-capable agents.
 
 ### Risks
 An over-general trace could become vague.
 
-Use typed events to prevent this.
+Typed events prevent this.
 
 ---
 
@@ -70,7 +69,7 @@ Use typed events to prevent this.
 Enterprise execution includes different semantic event types.
 
 ### Decision
-Use typed contracts for model calls, tools, state mutations, approvals, delegations, and workflow transitions.
+Use typed contracts for model calls, tools, state mutations, approvals, delegations, retrieval, and workflow transitions.
 
 ### Alternatives considered
 - One untyped event dictionary.
@@ -83,26 +82,26 @@ More contracts must be maintained.
 
 ---
 
-## Decision 5 — Generalize prompt artifacts into enterprise candidate artifacts
+## Decision 5 — Use enterprise candidate artifacts
 
 ### Context
-The current candidate model is centered on prompts and configuration.
+The original candidate model centered on prompts and configuration.
 
 ### Decision
-Keep prompts as valid artifacts, but introduce a general candidate artifact model.
+Keep prompts as valid artifacts, but use a general enterprise candidate artifact model.
 
 ### Alternatives considered
-- Keep prompt artifacts and encode everything else as configuration.
+- Encode all non-prompt changes as configuration.
 
 ### Consequences
-Tools, policies, routing, models, workflows, and capabilities can become explicit candidate components.
+Tools, policies, routing, models, workflows, approvals, memory, retrieval, and capabilities can be explicit candidate components.
 
 ### Risks
 Artifact boundaries must stay simple.
 
 ---
 
-## Decision 6 — Introduce typed enterprise candidate changes
+## Decision 6 — Use typed enterprise candidate changes
 
 ### Context
 A JSON path diff does not explain the meaning of an enterprise improvement.
@@ -119,20 +118,20 @@ The system can reason about allowed change classes and their risk.
 ### Risks
 The taxonomy can grow too large.
 
-Keep the initial set small and based on real changes.
+Keep the set based on real change types.
 
 ---
 
 ## Decision 7 — Keep improvement bounded by scope
 
 ### Context
-The current project already protects datasets, evaluators, promotion rules, and protected artifacts.
+The Lab protects datasets, evaluators, promotion rules, and protected resources.
 
 ### Decision
-Expand this model into `ImprovementScope`.
+Use `ImprovementScope` to bound candidate changes.
 
 ### Alternatives considered
-- Let an LLM generate unrestricted candidate changes.
+- Let a generator make unrestricted changes.
 
 ### Consequences
 Candidate generation remains controlled and reviewable.
@@ -142,13 +141,13 @@ Scopes that are too strict can block useful improvements.
 
 ---
 
-## Decision 8 — Make Enterprise Agent Harness an integration, not a core dependency
+## Decision 8 — Keep Enterprise Agent Harness as an integration
 
 ### Context
 Enterprise Agent Harness is the expected main runtime.
 
 ### Decision
-Create a dedicated integration adapter.
+Keep it behind a dedicated integration adapter.
 
 The Lab core must not import the Harness.
 
@@ -164,13 +163,13 @@ The adapter must handle version drift between projects.
 
 ---
 
-## Decision 9 — Extend reproducibility with environment and registry snapshots
+## Decision 9 — Capture reproducible environment and registry snapshots
 
 ### Context
 A candidate cannot be reproduced from model and prompt information alone.
 
 ### Decision
-Record agent, tool, capability, policy, runtime, provider, model, and fixture identity with each run.
+Record agent, tool, capability, policy, runtime, provider, model, fixture, and environment identity with each run.
 
 ### Alternatives considered
 - Store names and versions only in metadata.
@@ -179,30 +178,27 @@ Record agent, tool, capability, policy, runtime, provider, model, and fixture id
 Historical comparisons can identify the exact ecosystem used.
 
 ### Risks
-Snapshot identity rules must be stable.
+Snapshot identity rules must stay stable.
 
 ---
 
 ## Decision 10 — Remove legacy domain APIs after consumer migration
 
 ### Context
-The enterprise contracts were introduced beside the conversation- and
-prompt-shaped contracts so existing consumers could migrate safely.
+Enterprise contracts were introduced beside the original narrow contracts during migration.
 
 ### Decision
-Once the Lab's internal consumers, example, and tests use the enterprise
-contracts, remove the old domain classes and modules. Retain only bounded
-wire-format aliases needed to read stored data, and do not expose compatibility
-classes as the public API.
+Remove old domain classes and modules after internal consumers migrate.
+
+Retain only bounded wire-format aliases needed to read stored data.
 
 ### Consequences
-The public surface is explicit: `ExecutionTrace`,
-`EnterpriseAgentCandidate`, `EnterpriseEvaluationCase`,
-`EnterpriseEvaluationRunner`, and typed enterprise comparison APIs.
+The public surface is explicit: `ExecutionTrace`, `EnterpriseAgentCandidate`, `EnterpriseEvaluationCase`, provider-neutral evaluation runners, and typed enterprise comparison APIs.
 
 ### Risks
-Downstream imports of removed APIs fail at import time. The migration map and
-API migration tests make that break explicit and auditable.
+Downstream imports of removed APIs fail at import time.
+
+Migration documentation and tests make that break explicit.
 
 ---
 
@@ -212,7 +208,7 @@ API migration tests make that break explicit and auditable.
 Enterprise agents can perform writes and external side effects.
 
 ### Decision
-Add an explicit evaluation-environment boundary with setup, fixtures, state capture, and teardown.
+Use an explicit evaluation-environment boundary with setup, fixtures, state capture, reset, and teardown.
 
 ### Alternatives considered
 - Run enterprise tests directly against live services.
@@ -267,7 +263,7 @@ Judge drift and provider variance remain possible.
 ## Decision 14 — Preserve explicit human promotion authority
 
 ### Context
-The current system separates promotion eligibility from human decision.
+The system separates promotion eligibility from human decision.
 
 ### Decision
 Keep that separation.
@@ -286,31 +282,29 @@ Human review can slow promotion.
 ## Decision 15 — Keep framework runners outside the Lab core
 
 ### Context
-Pydantic Evals is useful to applications, but a framework-specific runner
-would couple the Lab's public domain APIs to one execution library.
+Framework-specific runners can be useful, but they should not define the Lab domain.
 
 ### Decision
-Keep framework runners in application or integration packages. The Lab exposes
-`EnterpriseRuntime` and `EnterpriseEvaluationRunner` and accepts typed
-enterprise traces at that boundary.
+Keep framework runners in application or integration packages.
+
+The Lab exposes provider-neutral runtime and evaluation boundaries.
 
 ### Alternatives considered
-- Remove Pydantic Evals.
-- Keep it as the permanent architecture boundary.
+- Remove framework integrations.
+- Keep one framework as the permanent architecture boundary.
 
 ### Consequences
-Applications can use Pydantic Evals, replay, shadow, or distributed runners
-without changing Lab core contracts.
+Applications can use Pydantic Evals, replay, shadow, or other runner implementations without changing core contracts.
 
 ### Risks
 Each adapter must preserve event identity, ordering, and safe evidence.
 
 ---
 
-## Decision 16 — Delay the package rename
+## Decision 16 — Rename only after the architecture transition
 
 ### Context
-The current package is still structurally the Enterprise Agent Improvement Lab.
+A package rename should represent a real product change.
 
 ### Decision
 Rename only after enterprise contracts and workflows exist.
@@ -319,7 +313,7 @@ Rename only after enterprise contracts and workflows exist.
 - Rename before implementation starts.
 
 ### Consequences
-The name change reflects a real architecture change.
+The final package name reflects the completed architecture transition.
 
 ### Risks
-Temporary documentation must distinguish current and target names.
+Migration documentation must clearly distinguish removed and canonical APIs.

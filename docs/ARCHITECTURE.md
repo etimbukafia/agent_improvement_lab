@@ -1,8 +1,8 @@
-# Enterprise Enterprise Agent Improvement Lab Architecture
+# Enterprise Agent Improvement Lab Architecture
 
 ## Purpose
 
-Enterprise Enterprise Agent Improvement Lab is a provider-neutral system for controlled evaluation and improvement of enterprise AI agents.
+Enterprise Agent Improvement Lab is a provider-neutral system for controlled evaluation and improvement of enterprise AI agents.
 
 It answers two questions:
 
@@ -13,20 +13,23 @@ The Lab does not run production agents. It does not deploy agents. It does not o
 
 ## Responsibility boundaries
 
-### Enterprise Enterprise Agent Improvement Lab
+### Enterprise Agent Improvement Lab
 
 The Lab owns:
 
 - evaluation datasets and cases;
 - evaluation evidence;
-- execution trace contracts used for evaluation;
-- deterministic evaluators and optional judges;
+- execution trace contracts;
+- deterministic evaluators and explicit subjective judges;
 - failure mining and review;
 - root-cause evidence;
 - bounded improvement planning;
-- candidate comparison;
+- candidate construction rules;
+- baseline comparison;
 - promotion evidence;
-- human-controlled promotion and rollback records.
+- human-controlled promotion and rollback records;
+- evidence-governance contracts;
+- storage interfaces for Lab records.
 
 ### Enterprise Agent Harness
 
@@ -55,80 +58,17 @@ Applications own:
 - product workflows;
 - decisions about which agents or capabilities to build.
 
-## Current architecture
-
-The current project has strong foundations:
-
-- a small `EnterpriseRuntime` adapter boundary;
-- versioned datasets;
-- immutable candidate artifacts;
-- typed traces and summaries;
-- deterministic evaluators;
-- provider-neutral enterprise evaluation execution;
-- failure mining and annotations;
-- baseline comparison;
-- holdout evaluation;
-- promotion gates;
-- explicit human promotion and rollback decisions;
-- SQLite persistence;
-- CLI and dashboard query services.
-
-The main constraints are model assumptions, not the evaluation lifecycle.
-
-## Current limits
-
-### Conversational trace assumption
-
-`AgentTrace` is built around turns, text input, text output, and tool calls.
-
-This is now a historical migration concern. The live Lab surface uses
-`ExecutionTrace`; conversational evidence is represented by typed
-`MessageEvent` and `ToolCallEvent` values.
-
-Enterprise agents also need to represent:
-
-- events;
-- state reads and writes;
-- approvals;
-- delegations;
-- workflow transitions;
-- background work;
-- human actions;
-- external events;
-- non-text outcomes.
-
-### Prompt-centered candidate assumption
-
-The current candidate model mainly changes prompts and configuration.
-
-Enterprise improvements must also support:
-
-- tool additions and removals;
-- permission changes;
-- policy changes;
-- routing changes;
-- model changes;
-- retrieval changes;
-- memory changes;
-- workflow changes;
-- capability changes;
-- approval-rule changes.
-
-### Interaction-centered case assumption
-
-Enterprise cases must support initial state, actions, approvals, invariants, final state, authorization context, and business outcomes.
-
-## Target architecture
+## System shape
 
 ```text
-Enterprise Agent Harness
+Enterprise Agent Harness or another runtime
         │
         │ execution evidence
         ▼
-Harness integration adapter
+Runtime integration adapter
         │
         ▼
-Enterprise Enterprise Agent Improvement Lab
+Enterprise Agent Improvement Lab
         │
         ├── Evaluation
         ├── Failure mining
@@ -139,18 +79,18 @@ Enterprise Enterprise Agent Improvement Lab
         └── Promotion evidence
         │
         ▼
-Candidate definition
+Enterprise candidate definition
         │
         ▼
-Enterprise Agent Harness
+Runtime integration adapter
         │
         ▼
-Evaluation environment
+Controlled evaluation environment
 ```
 
 ## Core domain concepts
 
-The target core needs these concepts:
+The canonical enterprise contracts include:
 
 - `ExecutionTrace`
 - typed execution events
@@ -160,77 +100,147 @@ The target core needs these concepts:
 - `EnterpriseCandidateChange`
 - `ImprovementScope`
 - `EnvironmentSnapshot`
-- `EvaluationReport`
+- enterprise evaluation reports
 - `EvaluationFailure`
 - `FailureCluster`
 - `RootCauseHypothesis`
 - `ImprovementPlan`
-- `BaselineComparison`
-- `PromotionPolicy`
-- `PromotionDecision`
+- enterprise comparison contracts
+- risk-aware promotion contracts
+- governance contracts
+- system-level evaluation contracts
+
+The old conversation- and prompt-shaped public contracts are migration history. They are not the canonical API.
 
 ## Execution trace model
 
-Use one generic ordered event stream.
+The Lab uses one generic ordered event stream.
 
-Suggested event types:
+Typed event families represent:
 
-- model call;
-- tool call;
-- message;
-- state read;
-- state mutation;
+- model calls;
+- tool calls;
+- messages;
+- state reads;
+- state mutations;
 - retrieval;
-- approval request;
-- approval decision;
+- approval requests;
+- approval decisions;
 - delegation;
-- workflow transition;
-- external event;
-- human action;
-- error.
+- workflow transitions;
+- external events;
+- human actions;
+- errors.
 
-Keep typed events. Do not replace domain contracts with untyped metadata dictionaries.
+Core behavior must not be hidden in untyped metadata.
 
 ## Runtime adapter boundary
 
-The Lab must continue to accept external runtimes through a small protocol.
+The Lab accepts external execution through a small provider-neutral runtime boundary.
 
-The core `EnterpriseRuntime` protocol describes:
+`EnterpriseRuntime` describes:
 
 - runtime identity;
-- execution of one evaluation case against one candidate;
-- return of a Lab-compatible execution trace.
+- execution of one enterprise evaluation case against one enterprise candidate;
+- return of a Lab-compatible `ExecutionTrace`.
 
 Harness-specific translation belongs under `integrations/`.
-The optional Pydantic Evals adapter is lazy and provider-specific. It is not a
-dependency of core contracts, storage, comparison, or promotion.
+
+Framework-specific runners, including optional Pydantic Evals support, stay outside core domain contracts.
 
 ## Evaluation boundary
 
-The Lab evaluates evidence. It must not enforce runtime policy itself.
+The Lab evaluates evidence. It does not enforce runtime policy.
 
 The Lab can verify that:
 
 - a required approval occurred;
 - an unauthorized action did not occur;
 - a state invariant was preserved;
-- a workflow followed valid transitions.
+- a workflow followed valid transitions;
+- tool side effects matched expectations;
+- delegation stayed within allowed boundaries;
+- business and operational outcomes met defined requirements.
 
-The Harness remains responsible for enforcing those controls during execution.
+The runtime remains responsible for enforcing controls during execution.
 
-## Candidate lifecycle
+## Evaluation environment
+
+Write-capable agents require controlled evaluation environments.
+
+The environment boundary supports:
+
+- fixture loading;
+- initial state;
+- disposable state;
+- controlled clocks;
+- external service stubs;
+- state snapshots;
+- side-effect inspection;
+- reset and teardown.
+
+One evaluation case must not leak state into another case.
+
+## Candidate and improvement model
+
+Candidates are complete enterprise agent definitions, not prompt patches.
+
+Candidate artifacts can represent prompts, tools, policies, routing, models, memory, retrieval, workflows, approvals, capabilities, and configuration.
+
+Typed candidate changes explain what changed and why.
+
+`ImprovementScope` limits which changes can occur and protects resources such as datasets, evaluators, promotion rules, policies, permissions, agents, tools, and capabilities.
+
+Candidate lineage remains explicit and immutable.
+
+## Improvement decision flow
 
 ```text
-DRAFT
-  ↓
-EVALUATED
-  ↓
-REVIEW
-  ↓
-APPROVED or REJECTED
-  ↓
-RETIRED
+EvaluationFailure
+    ↓
+FailureCluster
+    ↓
+RootCauseHypothesis
+    ↓
+ImprovementPlan
+    ↓
+Bounded candidate builder
+    ↓
+EnterpriseAgentCandidate
 ```
+
+Root-cause and planning decisions must reference evidence.
+
+The Lab prefers existing approved tools and capabilities over unrestricted generation.
+
+Arbitrary executable code generation is outside the v0.1 scope.
+
+## Comparison and promotion
+
+Baseline comparison covers more than aggregate quality scores.
+
+It can include:
+
+- security;
+- authorization;
+- state integrity;
+- approvals;
+- workflow completion;
+- tool side effects;
+- delegation;
+- reliability;
+- latency;
+- token usage;
+- cost;
+- business outcomes.
+
+Hard regressions remain distinct from soft regressions.
+
+A high-risk regression must not be hidden by aggregate score improvement.
+
+Promotion evidence is risk-aware. Human approval remains the final authority.
+
+## Candidate lifecycle
 
 The controlled lifecycle is:
 
@@ -250,43 +260,76 @@ ACTIVE
 RETIRED
 ```
 
-Shadow and canary records contain evidence only. They do not deploy or route
-production traffic.
+Shadow and canary records contain evaluation evidence. The Lab does not deploy candidates or route production traffic.
 
-A candidate must have immutable lineage from:
+## Production evidence ingestion
 
-- parent candidate;
-- source failures;
-- source annotations;
-- improvement scope;
-- generator or builder;
-- environment snapshot.
+The Lab can ingest production execution evidence through provider-neutral ingestion boundaries.
 
-## Promotion lifecycle
+Sampling can select traces from explicit operational signals such as:
 
-Promotion remains evidence-based and human-controlled.
+- permission denial;
+- approval rejection;
+- manual override;
+- rollback;
+- unexpected state mutation;
+- SLA breach;
+- policy violation;
+- operator escalation;
+- compensation events;
+- business KPI degradation;
+- data-integrity failure.
 
-The Lab computes eligibility from promotion gates.
+The Lab is not a real-time production monitoring platform.
 
-A human records the final decision.
+## Evidence governance
 
-The Lab must never convert eligibility into automatic production deployment.
+Evaluation evidence must be explicit, auditable, and governed.
 
-## Evidence model
+The governance model includes:
 
-Evaluation evidence must be explicit and auditable.
+- evidence references;
+- redaction policies;
+- retention policies;
+- sensitive-field classifications;
+- tenant boundaries.
 
-Prefer references and safe summaries over raw sensitive payload copies.
+Prefer safe references and summaries over copies of sensitive raw payloads.
 
-The evidence model must support:
+Secrets and raw credentials must not be persisted as evaluation evidence.
 
-- trace references;
-- state snapshots;
-- evaluator evidence;
-- artifact checksums;
-- environment snapshots;
-- candidate lineage;
-- promotion-gate evidence.
+## Storage
+
+Core services depend on storage ports rather than SQLite-specific behavior.
+
+The main storage boundaries include datasets, traces, experiments, candidates, failures, evaluations, promotions, artifacts, and environment snapshots.
+
+SQLite is the included persistence implementation for v0.1.
+
+## Runner architecture
+
+Evaluation services depend on provider-neutral runner contracts.
+
+Supported patterns include:
+
+- local execution;
+- replay evaluation;
+- shadow evaluation;
+- optional Pydantic Evals integration.
+
+Runner selection must not change domain evaluation semantics.
+
+## Multi-agent evaluation
+
+System-level contracts reuse the same trace, evaluator, comparison, and failure architecture.
+
+The Lab can evaluate:
+
+- one agent;
+- agent-to-agent interaction;
+- whole-system behavior.
+
+System evaluation can detect delegation loops, context leakage, privilege escalation, inconsistent decisions, duplicate work, invalid delegation, and missing result validation.
 
 ## Core versus integrations
 
@@ -294,12 +337,14 @@ The evidence model must support:
 
 Core contains:
 
-- contracts;
+- domain contracts;
 - evaluation logic;
 - comparison logic;
 - failure logic;
+- improvement planning;
 - candidate rules;
 - promotion rules;
+- governance contracts;
 - storage protocols;
 - provider-neutral interfaces.
 
@@ -308,10 +353,10 @@ Core contains:
 Integrations contain:
 
 - Enterprise Agent Harness adapter;
-- optional Pydantic Evals adapter;
+- optional framework adapters;
 - external judge providers;
 - production trace ingestion adapters;
-- storage implementations that need external systems.
+- external persistence implementations when added later.
 
 ## Provider neutrality
 
@@ -332,5 +377,6 @@ The Lab does not own:
 - automatic production promotion;
 - production agent execution;
 - business opportunity discovery;
+- real-time production monitoring;
 - model training;
 - reinforcement learning.

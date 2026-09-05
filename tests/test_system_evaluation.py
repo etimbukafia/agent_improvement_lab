@@ -41,7 +41,7 @@ def _candidate(agent_id: str, tool: str = "orders.read") -> EnterpriseAgentCandi
         agent_id=agent_id,
         version="1.0.0",
         artifacts=(artifact.to_reference(),),
-        tools=(tool,),
+        tool_refs=(f"tool:{tool}@1.0.0",),
     )
 
 

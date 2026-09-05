@@ -35,7 +35,6 @@ from enterprise_agent_improvement_lab.contracts.traces import (
 from enterprise_agent_improvement_lab.integrations.enterprise_agent_harness import (
     EnterpriseAgentHarnessAdapter,
     HarnessCandidateDefinition,
-    HarnessIntegrationError,
     HarnessRegistryReference,
     harness_agent_definition_to_candidate_artifact,
     harness_approval_policy_to_candidate_artifact,
@@ -326,10 +325,10 @@ def _candidate() -> tuple[EnterpriseAgentCandidate, tuple[CandidateArtifact, ...
         agent_id="orders-agent",
         version="1.0.0",
         artifacts=tuple(item.to_reference() for item in artifacts),
-        prompt_ref=artifacts[2].to_reference(),
-        tools=("orders.read",),
-        skills=("order-review",),
-        policies=("orders-policy",),
+        prompt_ref=artifacts[2].to_component_reference(),
+        tool_refs=(artifacts[1].to_component_reference(),),
+        skill_refs=(artifacts[3].to_component_reference(),),
+        policy_refs=(artifacts[4].to_component_reference(),),
     )
     return candidate, artifacts
 
@@ -723,6 +722,29 @@ def test_trace_summary_excludes_raw_sensitive_event_payloads() -> None:
     assert summary.tool_call_count == 1
 
 
+def test_trace_does_not_expose_uncontracted_skill_selection_metadata() -> None:
+    converted = harness_run_trace_to_execution_trace(
+        _trace(
+            _event(
+                "workflow",
+                1,
+                "workflow_step_completed",
+                stage="workflow",
+                skill_id="order-review",
+                skill_version="1.0.0",
+                skill_selected="true",
+                skill_selection="order-review",
+            )
+        )
+    )
+
+    metadata = converted.events[0].metadata
+    assert metadata["skill_id"] == "order-review"
+    assert metadata["skill_version"] == "1.0.0"
+    assert "skill_selected" not in metadata
+    assert "skill_selection" not in metadata
+
+
 def test_lab_core_imports_without_loading_harness_package() -> None:
     environment = dict(os.environ)
     environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
@@ -742,17 +764,6 @@ def test_lab_core_imports_without_loading_harness_package() -> None:
     )
 
     assert result.returncode == 0, result.stderr
-
-
-def test_invalid_registry_reference_does_not_cross_boundary_as_untyped_config() -> None:
-    candidate, artifacts = _candidate()
-    adapter = EnterpriseAgentHarnessAdapter(harness_module=_FakeHarnessModule())
-
-    with pytest.raises(HarnessIntegrationError, match="exact Harness registry version"):
-        adapter.to_harness_candidate_definition(
-            candidate.model_copy(update={"tools": ("unknown-tool",)}),
-            artifacts=artifacts,
-        )
 
 
 def test_registry_reference_contract_keeps_component_identity_exact() -> None:

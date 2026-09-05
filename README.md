@@ -15,6 +15,7 @@ The Lab does not deploy agents or enforce production runtime policy. Those respo
 - creates evidence-backed root-cause hypotheses;
 - plans bounded improvements within explicit improvement scopes;
 - builds typed candidate changes for prompts, skills, tools, policies, routing, models, workflows, approvals, and related configuration;
+- pins prompt, skill, tool, and policy candidate intent to exact versioned component references;
 - compares candidates with baselines across quality, safety, authorization, state integrity, workflow, reliability, cost, and business outcomes;
 - applies risk-aware promotion gates while keeping the final promotion decision human-controlled;
 - supports offline, replay, shadow, and controlled canary evaluation evidence;

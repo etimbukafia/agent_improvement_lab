@@ -320,12 +320,11 @@ class ImprovementPlanner:
             ):
                 continue
             if kind == ChangeKind.TOOL_ADDITION and hypothesis.affected_tool in {
-                *candidate.tools,
-                *candidate.tool_bindings,
+                reference.component_id for reference in candidate.tool_refs
             }:
                 continue
             if kind == ChangeKind.SKILL_ADDITION and hypothesis.affected_skill in set(
-                candidate.skills
+                reference.component_id for reference in candidate.skill_refs
             ):
                 continue
             if kind == ChangeKind.TOOL_ADDITION and hypothesis.affected_tool:

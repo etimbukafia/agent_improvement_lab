@@ -48,12 +48,21 @@ and `policy_refs`. Lab `SYSTEM_PROMPT`, `DEVELOPER_PROMPT`, and `USER_TEMPLATE`
 artifacts can materialize an immutable Harness `PromptDefinition`. A
 `SKILL_CONFIGURATION` artifact can materialize an immutable `SkillDefinition`.
 
+The four Lab candidate fields use the provider-neutral
+`CandidateComponentReference` contract. Each reference is exact before it
+reaches the adapter. The adapter does not select a registry version for a bare
+component ID.
+
 Skill tool dependencies describe discovery only. They do not grant execution
 authority. The candidate must list every executable tool explicitly.
 
 After a factory build, the adapter records the Harness `ResolvedAgentManifest`
 ID, digest, registry snapshot ID, and exact component references. The manifest
 describes what Harness built; the Lab candidate describes what the Lab proposed.
+
+The trace adapter keeps safe component provenance. It drops uncontracted
+`skill_selected` and `skill_selection` metadata. These values cannot become Lab
+evidence without an explicit Harness selection event.
 
 ## Run an adapter
 

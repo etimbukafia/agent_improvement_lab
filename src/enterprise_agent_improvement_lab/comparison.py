@@ -432,15 +432,6 @@ def _source_component_value(source: object, field: str, kind: str) -> object:
     value = _value(target, field)
     if value is None and kind == "agent":
         value = target
-    if value is None and field == "skill_refs":
-        value = _value(target, "skills")
-    if value is None and field == "tool_refs":
-        value = (
-            *_sequence_or_one(_value(target, "tools")),
-            *_sequence_or_one(_value(target, "tool_bindings")),
-        )
-    if value is None and field == "policy_refs":
-        value = _value(target, "policies")
     if value is None and field == "prompt_ref":
         prompt_kinds = {"system_prompt", "developer_prompt", "user_template"}
         artifacts = _sequence_or_one(_value(target, "artifacts"))

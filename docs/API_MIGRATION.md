@@ -36,13 +36,22 @@ The canonical package name is `enterprise_agent_improvement_lab`.
 
 ## Harness artifact model
 
-Active candidate APIs use `skills`, `SKILL_CONFIGURATION`,
-`SKILL_ADDITION`, and `SKILL_REMOVAL`. Root-cause hypotheses use
-`affected_skill`. The Harness adapter uses exact `prompt_ref`, `skill_refs`,
-`tool_refs`, and `policy_refs` values. It does not build obsolete
-`capabilities`, `allowed_tools`, or AgentConfig `policies` fields.
+Active candidate APIs use `CandidateComponentReference` for `prompt_ref`,
+`skill_refs`, `tool_refs`, and `policy_refs`. Each reference includes a
+component kind, component ID, version, canonical registry reference, and
+optional exact artifact lineage. Bare component IDs are invalid.
+
+The old candidate fields `skills`, `tools`, `tool_bindings`, and `policies`
+are removed. Skill changes still use `SKILL_CONFIGURATION`, `SKILL_ADDITION`,
+and `SKILL_REMOVAL`. Root-cause hypotheses use `affected_skill`. The Harness
+adapter does not build obsolete `capabilities`, `allowed_tools`, or AgentConfig
+`policies` fields.
 
 The adapter may materialize Lab prompt and skill artifacts into the current
 [Enterprise Agent Harness](https://github.com/etimbukafia/enterprise-agent-harness)
 `PromptDefinition` and `SkillDefinition` contracts. A skill dependency is not
 tool authority.
+
+Trace translation discards `skill_selected` and `skill_selection` metadata.
+The Lab can record skill selection only after Harness defines and emits an
+explicit selection event.

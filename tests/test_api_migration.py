@@ -14,6 +14,7 @@ def test_enterprise_contracts_are_the_public_runtime_surface() -> None:
         "EnterpriseEvaluationCase",
         "EnterpriseEvaluationRunner",
         "CandidateArtifact",
+        "CandidateComponentReference",
         "ChangeKind",
         "ImprovementScope",
     ):

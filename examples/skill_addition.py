@@ -37,8 +37,11 @@ def build_skill_candidate() -> tuple[EnterpriseAgentCandidate, CandidateArtifact
         agent_id="payment-agent",
         version="1.0.0",
         artifacts=(prompt.to_reference(),),
-        prompt_ref=prompt.to_reference(),
-        tools=("payments.charge", "payments.lookup"),
+        prompt_ref=prompt.to_component_reference(),
+        tool_refs=(
+            "tool:payments.charge@1.0.0",
+            "tool:payments.lookup@1.0.0",
+        ),
         rationale="Payment tools are already approved and available.",
         created_at=created_at,
     )
@@ -81,8 +84,8 @@ if __name__ == "__main__":
         json.dumps(
             {
                 "candidate_id": candidate.candidate_id,
-                "skills": candidate.skills,
-                "tools": candidate.tools,
+                "skill_refs": [reference.identity for reference in candidate.skill_refs],
+                "tool_refs": [reference.identity for reference in candidate.tool_refs],
                 "skill_artifact": skill.registry_reference,
             },
             indent=2,

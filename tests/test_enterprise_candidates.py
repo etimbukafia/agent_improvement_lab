@@ -11,6 +11,8 @@ from enterprise_agent_improvement_lab.contracts.candidates import (
     CandidateArtifact,
     CandidateArtifactKind,
     CandidateArtifactReference,
+    CandidateComponentKind,
+    CandidateComponentReference,
     EnterpriseAgentCandidate,
     EnterpriseCandidateLineage,
 )
@@ -78,11 +80,16 @@ def _candidate(
         version="2.0.0",
         parent_candidate_id=parent_candidate_id,
         artifacts=selected,
+        prompt_ref=(
+            selected[0].to_component_reference()
+            if isinstance(selected[0], CandidateArtifact)
+            and selected[0].kind == CandidateArtifactKind.SYSTEM_PROMPT
+            else None
+        ),
         runtime_profile="worker-profile-1",
-        tools=("orders.read", "orders.write"),
-        tool_bindings=("tool-binding-2",),
-        skills=("order-management",),
-        policies=("refund-policy-1",),
+        tool_refs=("tool:orders.read@1.0.0", "tool:orders.write@1.0.0"),
+        skill_refs=("skill:order-management@1.0.0",),
+        policy_refs=("policy:refund-policy-1@1.0.0",),
         model_configuration="model-config-2",
         memory_configuration="memory-config-1",
         retrieval_configuration="retrieval-config-1",
@@ -165,10 +172,12 @@ def test_enterprise_candidate_references_tools_policies_skills_and_runtime(
 
     assert candidate.agent_id == "orders-agent"
     assert candidate.runtime_profile == "worker-profile-1"
-    assert candidate.tools == ("orders.read", "orders.write")
-    assert candidate.tool_bindings == ("tool-binding-2",)
-    assert candidate.skills == ("order-management",)
-    assert candidate.policies == ("refund-policy-1",)
+    assert tuple(reference.identity for reference in candidate.tool_refs) == (
+        "tool:orders.read@1.0.0",
+        "tool:orders.write@1.0.0",
+    )
+    assert candidate.skill_refs[0].identity == "skill:order-management@1.0.0"
+    assert candidate.policy_refs[0].identity == "policy:refund-policy-1@1.0.0"
     assert candidate.model_configuration == "model-config-2"
     assert candidate.memory_configuration == "memory-config-1"
     assert candidate.retrieval_configuration == "retrieval-config-1"
@@ -189,6 +198,67 @@ def test_duplicate_or_invalid_artifact_references_fail(created_at: datetime):
 
     with pytest.raises(ValidationError):
         CandidateArtifactReference(artifact_id="prompt-1", content_sha256="not-a-checksum")
+
+
+def test_candidate_component_references_require_exact_typed_identity(
+    created_at: datetime,
+):
+    artifact = _artifact(created_at, "prompt-1", CandidateArtifactKind.SYSTEM_PROMPT)
+    candidate = EnterpriseAgentCandidate(
+        candidate_id="candidate-exact",
+        agent_id="orders-agent",
+        version="1.0.0",
+        artifacts=(artifact.to_reference(),),
+        prompt_ref=artifact.to_component_reference(),
+        skill_refs=("skill:order-review@1.0.0",),
+        tool_refs=("tool:orders.read@1.0.0",),
+        policy_refs=("policy:orders-policy@1.0.0",),
+    )
+
+    assert isinstance(candidate.prompt_ref, CandidateComponentReference)
+    assert candidate.prompt_ref.component_kind is CandidateComponentKind.PROMPT
+    assert candidate.prompt_ref.source_artifact_id == artifact.artifact_id
+    assert candidate.prompt_ref.source_artifact_sha256 == artifact.checksum
+    assert candidate.skill_refs[0].version == "1.0.0"
+
+    with pytest.raises(ValidationError, match="<kind>:<component_id>@<version>"):
+        EnterpriseAgentCandidate(
+            candidate_id="candidate-ambiguous",
+            agent_id="orders-agent",
+            version="1.0.0",
+            artifacts=(artifact.to_reference(),),
+            skill_refs=("order-review",),
+        )
+
+    with pytest.raises(ValidationError, match="skill_refs"):
+        EnterpriseAgentCandidate(
+            candidate_id="candidate-two-versions",
+            agent_id="orders-agent",
+            version="1.0.0",
+            artifacts=(artifact.to_reference(),),
+            skill_refs=(
+                "skill:order-review@1.0.0",
+                "skill:order-review@2.0.0",
+            ),
+        )
+
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        EnterpriseAgentCandidate(
+            candidate_id="candidate-old-field",
+            agent_id="orders-agent",
+            version="1.0.0",
+            artifacts=(artifact.to_reference(),),
+            skills=("skill:order-review@1.0.0",),
+        )
+
+    with pytest.raises(ValidationError, match="skill references"):
+        EnterpriseAgentCandidate(
+            candidate_id="candidate-wrong-kind",
+            agent_id="orders-agent",
+            version="1.0.0",
+            artifacts=(artifact.to_reference(),),
+            skill_refs=("tool:orders.read@1.0.0",),
+        )
 
 
 def test_candidate_lineage_is_explicit_immutable_and_round_trips(created_at: datetime):

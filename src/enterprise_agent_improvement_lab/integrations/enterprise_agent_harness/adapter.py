@@ -29,6 +29,7 @@ from enterprise_agent_improvement_lab.contracts.candidates import (
     CandidateArtifact,
     CandidateArtifactKind,
     CandidateArtifactReference,
+    CandidateComponentReference,
     EnterpriseAgentCandidate,
 )
 from enterprise_agent_improvement_lab.contracts.common import require_aware_utc, utc_now
@@ -176,8 +177,6 @@ _SAFE_TRACE_METADATA_KEYS = frozenset(
         "workflow_id",
         "skill_id",
         "skill_version",
-        "skill_selected",
-        "skill_selection",
     }
 )
 _TOOL_RESULT_EVENTS = frozenset(
@@ -469,7 +468,6 @@ class EnterpriseAgentHarnessAdapter:
         prompt_definition, prompt_ref = _resolve_prompt_component(
             candidate,
             resolved_artifacts,
-            payload,
             all_refs,
             harness=harness,
             registry=registry,
@@ -479,22 +477,19 @@ class EnterpriseAgentHarnessAdapter:
 
         payload["tool_refs"], tool_refs = _component_references(
             HarnessComponentKind.TOOL,
-            (*candidate.tools, *candidate.tool_bindings),
-            payload.get("tool_refs", ()),
+            candidate.tool_refs,
             all_refs,
             resolved_artifacts,
         )
         payload["skill_refs"], skill_refs = _component_references(
             HarnessComponentKind.SKILL,
-            candidate.skills,
-            payload.get("skill_refs", ()),
+            candidate.skill_refs,
             all_refs,
             resolved_artifacts,
         )
         payload["policy_refs"], policy_refs = _component_references(
             HarnessComponentKind.POLICY,
-            candidate.policies,
-            payload.get("policy_refs", ()),
+            candidate.policy_refs,
             all_refs,
             resolved_artifacts,
         )
@@ -502,7 +497,6 @@ class EnterpriseAgentHarnessAdapter:
         skill_definitions, skill_refs = _resolve_skill_components(
             candidate,
             resolved_artifacts,
-            payload,
             all_refs,
             harness=harness,
             registry=registry,
@@ -1503,7 +1497,6 @@ def _artifact_registry_reference(artifact: CandidateArtifact) -> HarnessRegistry
 def _resolve_prompt_component(
     candidate: EnterpriseAgentCandidate,
     artifacts: Sequence[CandidateArtifact],
-    payload: Mapping[str, Any],
     known_refs: Sequence[HarnessRegistryReference],
     *,
     harness: object,
@@ -1512,12 +1505,9 @@ def _resolve_prompt_component(
 ) -> tuple[object | None, HarnessRegistryReference]:
     """Resolve one exact prompt and materialize a Lab prompt artifact if needed."""
 
+    if candidate.prompt_ref is None:
+        raise HarnessIntegrationError("candidate needs one exact prompt reference")
     prompt_artifact = _select_prompt_artifact(candidate, artifacts)
-    requested: object | None = candidate.prompt_ref
-    if requested is None:
-        requested = _value(payload, "prompt_ref")
-    if requested is None and prompt_artifact is not None:
-        requested = prompt_artifact
     if prompt_artifact is not None and materialize:
         definition, reference = _materialize_prompt_definition(
             prompt_artifact,
@@ -1526,12 +1516,8 @@ def _resolve_prompt_component(
         )
         _register_materialized_component(registry, HarnessComponentKind.PROMPT, definition)
         return definition, reference
-    if requested is None:
-        raise HarnessIntegrationError(
-            "candidate needs one exact prompt reference or a prompt candidate artifact"
-        )
     reference = _resolve_component_reference(
-        requested,
+        candidate.prompt_ref,
         HarnessComponentKind.PROMPT,
         known_refs,
         artifacts,
@@ -1553,17 +1539,15 @@ def _select_prompt_artifact(
         return None
     if candidate.prompt_ref is not None:
         for artifact in prompt_artifacts:
-            if artifact.artifact_id == candidate.prompt_ref.artifact_id:
-                _validate_artifact_reference(candidate.prompt_ref, artifact)
+            if artifact.artifact_id == candidate.prompt_ref.source_artifact_id:
+                _validate_component_artifact_reference(candidate.prompt_ref, artifact)
                 return artifact
-            if (
-                candidate.prompt_ref.registry_reference is not None
-                and artifact.registry_reference == candidate.prompt_ref.registry_reference
-            ):
-                _validate_artifact_reference(candidate.prompt_ref, artifact)
+            if artifact.registry_reference == candidate.prompt_ref.registry_reference:
+                _validate_component_artifact_reference(candidate.prompt_ref, artifact)
                 return artifact
         raise HarnessIntegrationError(
-            f"prompt reference {candidate.prompt_ref.artifact_id!r} has no candidate artifact"
+            f"prompt reference {candidate.prompt_ref.registry_reference!r} "
+            "has no candidate artifact"
         )
     # Prefer the explicit system prompt, then preserve declaration order for
     # a candidate that uses one prompt artifact of another Lab kind.
@@ -1641,7 +1625,6 @@ def _materialize_prompt_definition(
 def _resolve_skill_components(
     candidate: EnterpriseAgentCandidate,
     artifacts: Sequence[CandidateArtifact],
-    payload: Mapping[str, Any],
     known_refs: Sequence[HarnessRegistryReference],
     *,
     harness: object,
@@ -1651,9 +1634,7 @@ def _resolve_skill_components(
 ) -> tuple[tuple[object, ...], tuple[HarnessRegistryReference, ...]]:
     """Resolve skills and materialize candidate SkillDefinition artifacts."""
 
-    values = (
-        tuple(candidate.skills) if candidate.skills else _as_sequence(_value(payload, "skill_refs"))
-    )
+    values = tuple(candidate.skill_refs)
     definitions: list[object] = []
     references: list[HarnessRegistryReference] = list(existing_refs)
     skill_artifacts = tuple(
@@ -1947,11 +1928,10 @@ def _safe_metadata_values(value: object) -> dict[str, Any]:
 def _component_references(
     kind: HarnessComponentKind,
     candidate_values: Sequence[object],
-    payload_values: object,
     known_refs: Sequence[HarnessRegistryReference],
     artifacts: Sequence[CandidateArtifact],
 ) -> tuple[list[dict[str, str]], tuple[HarnessRegistryReference, ...]]:
-    values = tuple(candidate_values) if candidate_values else _as_sequence(payload_values)
+    values = tuple(candidate_values)
     if not values:
         return [], ()
     refs: list[HarnessRegistryReference] = []
@@ -1984,6 +1964,13 @@ def _resolve_component_reference(
     if declared_kind is not None and declared_kind != kind:
         raise HarnessIntegrationError(
             f"Reference identifies a {declared_kind.value} component, not {kind.value}"
+        )
+    if isinstance(value, CandidateComponentReference):
+        return HarnessRegistryReference(
+            component_kind=kind,
+            component_id=value.component_id,
+            version=value.version,
+            source_artifact_id=value.source_artifact_id,
         )
     if isinstance(value, CandidateArtifact):
         artifact_reference = _artifact_registry_reference(value)
@@ -2310,6 +2297,38 @@ def _validate_artifact_reference(
     if actual[2] != _harness_version(artifact.version):
         raise HarnessIntegrationError(
             f"artifact reference {reference.artifact_id!r} has a stale registry version"
+        )
+
+
+def _validate_component_artifact_reference(
+    reference: CandidateComponentReference,
+    artifact: CandidateArtifact,
+) -> None:
+    """Ensure exact component intent matches its supplied artifact evidence."""
+
+    artifact_reference = _artifact_registry_reference(artifact)
+    if (
+        artifact_reference is None
+        or artifact_reference.component_kind.value != reference.component_kind.value
+        or artifact_reference.component_id != reference.component_id
+        or _harness_version(artifact_reference.version) != _harness_version(reference.version)
+    ):
+        raise HarnessIntegrationError(
+            f"component reference {reference.registry_reference!r} does not match its artifact"
+        )
+    if (
+        reference.source_artifact_id is not None
+        and reference.source_artifact_id != artifact.artifact_id
+    ):
+        raise HarnessIntegrationError(
+            f"component reference {reference.registry_reference!r} has different artifact lineage"
+        )
+    if (
+        reference.source_artifact_sha256 is not None
+        and reference.source_artifact_sha256 != artifact.checksum
+    ):
+        raise HarnessIntegrationError(
+            f"component reference {reference.registry_reference!r} has a stale artifact checksum"
         )
 
 

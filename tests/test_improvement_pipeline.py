@@ -61,9 +61,9 @@ def _candidate(artifact: CandidateArtifact | None = None) -> EnterpriseAgentCand
         agent_id="agent-1",
         version="1.0.0",
         artifacts=(artifact.to_reference(),),
-        tools=("orders.read",),
-        skills=("order-review",),
-        policies=("orders-policy",),
+        tool_refs=("tool:orders.read@1.0.0",),
+        skill_refs=("skill:order-review@1.0.0",),
+        policy_refs=("policy:orders-policy@1.0.0",),
     )
 
 
@@ -327,8 +327,10 @@ def test_tool_binding_builder_adds_tool_and_preserves_registry_evidence() -> Non
     assert result.change.after_reference is not None
     assert result.change.after_reference.registry_reference == "tool:orders.write@1.0.0"
     assert binding.registry_reference == "tool:orders.write@1.0.0"
-    assert result.candidate.tools == ("orders.read", "orders.write")
-    assert result.candidate.tool_bindings == ("orders.write",)
+    assert tuple(reference.identity for reference in result.candidate.tool_refs) == (
+        "tool:orders.read@1.0.0",
+        "tool:orders.write@1.0.0",
+    )
     assert result.change.source_failure_ids == ("failure-1",)
 
 

@@ -9,16 +9,29 @@
       "artifact_id": "calculator-prompt-v1",
       "version": "1.0.0",
       "kind": "system_prompt",
+      "content_sha256": "2b79a989181f6caef3b6a1711c8ed000270c8dddd6a37b52bf9502bac089642c",
       "registry_reference": "prompt:calculator-prompt@1.0.0"
     }
   ],
   "prompt_ref": {
-    "artifact_id": "calculator-prompt-v1",
+    "component_kind": "prompt",
+    "component_id": "calculator-prompt",
     "version": "1.0.0",
-    "kind": "system_prompt",
-    "registry_reference": "prompt:calculator-prompt@1.0.0"
+    "registry_reference": "prompt:calculator-prompt@1.0.0",
+    "source_artifact_id": "calculator-prompt-v1",
+    "source_artifact_version": "1.0.0",
+    "source_artifact_sha256": "2b79a989181f6caef3b6a1711c8ed000270c8dddd6a37b52bf9502bac089642c"
   },
-  "tools": ["calculator"],
+  "skill_refs": [],
+  "tool_refs": [
+    {
+      "component_kind": "tool",
+      "component_id": "calculator",
+      "version": "1.0.0",
+      "registry_reference": "tool:calculator@1.0.0"
+    }
+  ],
+  "policy_refs": [],
   "rationale": "Initial deterministic calculator behavior.",
   "created_at": "2026-08-24T12:00:00+00:00",
   "metadata": {"calculator_mode": "direct"}

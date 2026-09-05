@@ -51,6 +51,15 @@ class CandidateArtifactKind(StrEnum):
     WORKFLOW_CONFIGURATION = "workflow_configuration"
 
 
+class CandidateComponentKind(StrEnum):
+    """Provider-neutral component kinds referenced by a Lab candidate."""
+
+    PROMPT = "prompt"
+    SKILL = "skill"
+    TOOL = "tool"
+    POLICY = "policy"
+
+
 class ChangeKind(StrEnum):
     """Typed kinds of change that an improvement may propose."""
 
@@ -204,6 +213,20 @@ class CandidateArtifact(ContractModel):
             registry_reference=self.registry_reference,
         )
 
+    def to_component_reference(
+        self,
+        *,
+        component_kind: CandidateComponentKind | None = None,
+        component_id: str | None = None,
+    ) -> "CandidateComponentReference":
+        """Return an exact runtime-component reference with artifact lineage."""
+
+        return CandidateComponentReference.from_artifact(
+            self,
+            component_kind=component_kind,
+            component_id=component_id,
+        )
+
     @property
     def checksum(self) -> str:
         """Return the stable content checksum."""
@@ -264,6 +287,191 @@ class CandidateArtifactReference(ContractModel):
         """Return the artifact ID using the generic reference name."""
 
         return self.artifact_id
+
+
+_ARTIFACT_COMPONENT_KINDS = {
+    CandidateArtifactKind.SYSTEM_PROMPT: CandidateComponentKind.PROMPT,
+    CandidateArtifactKind.DEVELOPER_PROMPT: CandidateComponentKind.PROMPT,
+    CandidateArtifactKind.USER_TEMPLATE: CandidateComponentKind.PROMPT,
+    CandidateArtifactKind.SKILL_CONFIGURATION: CandidateComponentKind.SKILL,
+    CandidateArtifactKind.TOOL_BINDING: CandidateComponentKind.TOOL,
+    CandidateArtifactKind.TOOL_CONFIGURATION: CandidateComponentKind.TOOL,
+    CandidateArtifactKind.POLICY: CandidateComponentKind.POLICY,
+    CandidateArtifactKind.APPROVAL_POLICY: CandidateComponentKind.POLICY,
+}
+
+
+def _parse_component_identity(value: str) -> tuple[CandidateComponentKind, str, str]:
+    raw = value.strip()
+    prefix, separator, identity = raw.partition(":")
+    component_id, version_separator, version = identity.rpartition("@")
+    if not separator or not version_separator or not component_id or not version:
+        raise ValueError("Component references must use '<kind>:<component_id>@<version>'")
+    try:
+        component_kind = CandidateComponentKind(prefix)
+    except ValueError as exc:
+        raise ValueError(f"Unsupported candidate component kind: {prefix!r}") from exc
+    return component_kind, component_id, version
+
+
+class CandidateComponentReference(ContractModel):
+    """An exact provider-neutral reference to one candidate component version."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        str_strip_whitespace=True,
+        validate_assignment=True,
+    )
+
+    component_kind: CandidateComponentKind
+    component_id: str = Field(min_length=1)
+    version: VersionString
+    registry_reference: str = Field(min_length=1)
+    source_artifact_id: str | None = Field(default=None, min_length=1)
+    source_artifact_version: VersionString | None = None
+    source_artifact_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("component_id")
+    @classmethod
+    def validate_component_id(cls, value: str) -> str:
+        if ":" in value or "@" in value or any(char.isspace() for char in value):
+            raise ValueError("component_id cannot contain separators or whitespace")
+        return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_reference_input(cls, value: Any) -> Any:
+        if isinstance(value, CandidateArtifact):
+            return cls.from_artifact(value).model_dump(mode="python")
+        if isinstance(value, CandidateArtifactReference):
+            return cls.from_artifact_reference(value).model_dump(mode="python")
+        if isinstance(value, str):
+            component_kind, component_id, version = _parse_component_identity(value)
+            return {
+                "component_kind": component_kind,
+                "component_id": component_id,
+                "version": version,
+                "registry_reference": value.strip(),
+            }
+        if isinstance(value, dict):
+            data = dict(value)
+            registry_reference = data.get("registry_reference")
+            if isinstance(registry_reference, str):
+                component_kind, component_id, version = _parse_component_identity(
+                    registry_reference
+                )
+                data.setdefault("component_kind", component_kind)
+                data.setdefault("component_id", component_id)
+                data.setdefault("version", version)
+            elif all(
+                data.get(name) is not None for name in ("component_kind", "component_id", "version")
+            ):
+                kind = CandidateComponentKind(data["component_kind"])
+                data["registry_reference"] = (
+                    f"{kind.value}:{data['component_id']}@{data['version']}"
+                )
+            return data
+        return value
+
+    @model_validator(mode="after")
+    def validate_exact_identity(self) -> "CandidateComponentReference":
+        expected = f"{self.component_kind.value}:{self.component_id}@{self.version}"
+        if self.registry_reference != expected:
+            raise ValueError("registry_reference must match the exact component identity")
+        provenance = (
+            self.source_artifact_id,
+            self.source_artifact_version,
+            self.source_artifact_sha256,
+        )
+        if any(value is not None for value in provenance) and not all(
+            value is not None for value in provenance
+        ):
+            raise ValueError("Artifact provenance needs an ID, version, and checksum together")
+        return self
+
+    @property
+    def identity(self) -> str:
+        """Return the canonical exact component identity."""
+
+        return self.registry_reference
+
+    @classmethod
+    def from_artifact(
+        cls,
+        artifact: CandidateArtifact,
+        *,
+        component_kind: CandidateComponentKind | None = None,
+        component_id: str | None = None,
+    ) -> "CandidateComponentReference":
+        """Create an exact component reference from an immutable artifact."""
+
+        registry_reference = artifact.registry_reference
+        if registry_reference is not None:
+            parsed_kind, parsed_id, parsed_version = _parse_component_identity(registry_reference)
+            if component_kind is not None and parsed_kind != component_kind:
+                raise ValueError("Artifact registry reference has a different component kind")
+            if component_id is not None and parsed_id != component_id:
+                raise ValueError("Artifact registry reference has a different component ID")
+            if parsed_version != artifact.version:
+                raise ValueError("Artifact registry reference has a different version")
+            component_kind = parsed_kind
+            component_id = parsed_id
+        else:
+            component_kind = component_kind or _ARTIFACT_COMPONENT_KINDS.get(artifact.kind)
+            component_id = component_id or artifact.artifact_id
+            if component_kind is None:
+                raise ValueError("Artifact kind does not identify a candidate component")
+            registry_reference = f"{component_kind.value}:{component_id}@{artifact.version}"
+        return cls(
+            component_kind=component_kind,
+            component_id=component_id,
+            version=artifact.version,
+            registry_reference=registry_reference,
+            source_artifact_id=artifact.artifact_id,
+            source_artifact_version=artifact.version,
+            source_artifact_sha256=artifact.checksum,
+        )
+
+    @classmethod
+    def from_artifact_reference(
+        cls,
+        reference: CandidateArtifactReference,
+    ) -> "CandidateComponentReference":
+        """Create an exact component reference from pinned artifact lineage."""
+
+        if reference.version is None or reference.content_sha256 is None:
+            raise ValueError("Artifact reference needs an exact version and checksum")
+        component_kind: CandidateComponentKind | None
+        component_id: str
+        if reference.registry_reference is not None:
+            component_kind, component_id, component_version = _parse_component_identity(
+                reference.registry_reference
+            )
+            if component_version != reference.version:
+                raise ValueError("Artifact registry reference has a different version")
+        else:
+            component_kind = (
+                _ARTIFACT_COMPONENT_KINDS.get(reference.kind)
+                if reference.kind is not None
+                else None
+            )
+            if component_kind is None:
+                raise ValueError("Artifact reference needs an exact registry identity")
+            component_id = reference.artifact_id
+        assert component_kind is not None
+        return cls(
+            component_kind=component_kind,
+            component_id=component_id,
+            version=reference.version,
+            registry_reference=(
+                reference.registry_reference
+                or f"{component_kind.value}:{component_id}@{reference.version}"
+            ),
+            source_artifact_id=reference.artifact_id,
+            source_artifact_version=reference.version,
+            source_artifact_sha256=reference.content_sha256,
+        )
 
 
 class EnterpriseCandidateLineage(ContractModel):
@@ -333,32 +541,14 @@ class EnterpriseAgentCandidate(ContractModel):
             "artifacts", "artifact_references", "artifact_refs", "artifact_ids"
         ),
     )
-    # ``prompt_ref`` is a Lab-side artifact reference.  It is not a Harness
-    # ``ComponentReference``.  The adapter materializes or resolves the
-    # corresponding Harness PromptDefinition.
-    prompt_ref: CandidateArtifactReference | None = Field(
-        default=None,
-        validation_alias=AliasChoices(
-            "prompt_ref", "prompt", "prompt_artifact_ref", "prompt_artifact"
-        ),
-    )
+    prompt_ref: CandidateComponentReference | None = None
+    skill_refs: tuple[CandidateComponentReference, ...] = ()
+    tool_refs: tuple[CandidateComponentReference, ...] = ()
+    policy_refs: tuple[CandidateComponentReference, ...] = ()
     runtime_profile: str | None = Field(
         default=None,
         min_length=1,
         validation_alias=AliasChoices("runtime_profile", "runtime_profile_id"),
-    )
-    tools: tuple[str, ...] = Field(
-        default=(), validation_alias=AliasChoices("tools", "tool_ids", "tool_refs")
-    )
-    tool_bindings: tuple[str, ...] = Field(
-        default=(),
-        validation_alias=AliasChoices("tool_bindings", "tool_binding_ids"),
-    )
-    skills: tuple[str, ...] = Field(
-        default=(), validation_alias=AliasChoices("skills", "skill_ids", "skill_refs")
-    )
-    policies: tuple[str, ...] = Field(
-        default=(), validation_alias=AliasChoices("policies", "policy_ids", "policy_refs")
     )
     model_configuration: str | None = Field(
         default=None,
@@ -402,58 +592,6 @@ class EnterpriseAgentCandidate(ContractModel):
     created_at: datetime = Field(default_factory=utc_now)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    @model_validator(mode="before")
-    @classmethod
-    def coerce_prompt_reference(cls, value: Any) -> Any:
-        """Accept a provider-neutral exact prompt identity.
-
-        Lab contracts do not import Harness ``ComponentReference``.  A
-        compact ``prompt:id@version`` value is therefore stored as a pinned
-        ``CandidateArtifactReference`` with the registry identity retained.
-        """
-
-        if not isinstance(value, dict):
-            return value
-        data = dict(value)
-        if "prompt_ref" not in data:
-            for alias in ("prompt", "prompt_artifact_ref", "prompt_artifact"):
-                if alias in data:
-                    data["prompt_ref"] = data.pop(alias)
-                    break
-        if "prompt_ref" not in data:
-            return data
-        prompt = data.get("prompt_ref")
-        if isinstance(prompt, str):
-            raw = prompt.strip()
-            if "@" in raw:
-                if ":" in raw:
-                    prefix, identity = raw.split(":", 1)
-                else:
-                    prefix, identity = "prompt", raw
-                if prefix != "prompt":
-                    raise ValueError("prompt_ref must identify a prompt")
-                component_id, version = identity.rsplit("@", 1)
-                if component_id and version:
-                    data["prompt_ref"] = {
-                        "artifact_id": component_id,
-                        "version": version,
-                        "registry_reference": f"prompt:{component_id}@{version}",
-                    }
-        elif isinstance(prompt, dict):
-            prompt_data = dict(prompt)
-            if "prompt_id" in prompt_data and "artifact_id" not in prompt_data:
-                prompt_data["artifact_id"] = prompt_data.pop("prompt_id")
-            if (
-                prompt_data.get("registry_reference") is None
-                and prompt_data.get("artifact_id")
-                and prompt_data.get("version")
-            ):
-                prompt_data["registry_reference"] = (
-                    f"prompt:{prompt_data['artifact_id']}@{prompt_data['version']}"
-                )
-            data["prompt_ref"] = prompt_data
-        return data
-
     @model_validator(mode="after")
     def validate_candidate(self) -> "EnterpriseAgentCandidate":
         if self.parent_candidate_id == self.candidate_id:
@@ -464,29 +602,37 @@ class EnterpriseAgentCandidate(ContractModel):
         artifact_ids = [artifact.artifact_id for artifact in self.artifacts]
         if len(artifact_ids) != len(set(artifact_ids)):
             raise ValueError("artifact references must contain unique artifact IDs")
-        for name, values in (
-            ("tools", self.tools),
-            ("tool_bindings", self.tool_bindings),
-            ("skills", self.skills),
-            ("policies", self.policies),
+        component_groups = (
+            ("skill_refs", CandidateComponentKind.SKILL, self.skill_refs),
+            ("tool_refs", CandidateComponentKind.TOOL, self.tool_refs),
+            ("policy_refs", CandidateComponentKind.POLICY, self.policy_refs),
+        )
+        for name, expected_kind, references in component_groups:
+            if any(reference.component_kind != expected_kind for reference in references):
+                raise ValueError(f"{name} must contain only {expected_kind.value} references")
+            component_ids = tuple(reference.component_id for reference in references)
+            _validate_unique_ids(name, component_ids)
+        if (
+            self.prompt_ref is not None
+            and self.prompt_ref.component_kind != CandidateComponentKind.PROMPT
         ):
-            if any(not value for value in values):
-                raise ValueError(f"{name} must contain non-empty IDs")
-            if len(values) != len(set(values)):
-                raise ValueError(f"{name} must contain unique IDs")
-        if self.prompt_ref is not None:
-            if self.prompt_ref.kind not in {
-                None,
-                CandidateArtifactKind.SYSTEM_PROMPT,
-                CandidateArtifactKind.DEVELOPER_PROMPT,
-                CandidateArtifactKind.USER_TEMPLATE,
-            }:
-                raise ValueError("prompt_ref must identify a prompt artifact")
-            if (
-                self.prompt_ref.registry_reference is not None
-                and not self.prompt_ref.registry_reference.startswith("prompt:")
-            ):
-                raise ValueError("prompt_ref registry_reference must use the prompt namespace")
+            raise ValueError("prompt_ref must identify a prompt component")
+        artifact_by_id = {reference.artifact_id: reference for reference in self.artifacts}
+        for reference in (
+            *((self.prompt_ref,) if self.prompt_ref is not None else ()),
+            *self.skill_refs,
+            *self.tool_refs,
+            *self.policy_refs,
+        ):
+            if reference.source_artifact_id is None:
+                continue
+            artifact_reference = artifact_by_id.get(reference.source_artifact_id)
+            if artifact_reference is None:
+                raise ValueError("Component source artifact must be referenced by the candidate")
+            if artifact_reference.version != reference.source_artifact_version:
+                raise ValueError("Component source artifact version does not match")
+            if artifact_reference.content_sha256 != reference.source_artifact_sha256:
+                raise ValueError("Component source artifact checksum does not match")
         change_ids = tuple(change.change_id for change in self.changes)
         _validate_unique_ids("change_ids", change_ids)
         for change in self.changes:
@@ -1171,6 +1317,8 @@ __all__ = [
     "CandidateArtifact",
     "CandidateArtifactKind",
     "CandidateArtifactReference",
+    "CandidateComponentKind",
+    "CandidateComponentReference",
     "CandidateStatus",
     "ChangeKind",
     "EnterpriseAgentCandidate",

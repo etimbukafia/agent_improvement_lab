@@ -6,6 +6,10 @@ Enterprise Agent Improvement Lab v0.1.0 provides a provider-neutral system for e
 
 The release moves the project beyond prompt-focused agent evaluation. It adds typed enterprise execution evidence, bounded improvement planning, enterprise candidate changes, risk-aware comparison, governed evidence, and human-controlled promotion.
 
+Candidate prompt, skill, tool, and policy intent now uses one exact versioned
+core reference contract. Trace translation drops uncontracted skill-selection
+metadata.
+
 ## Main capabilities
 
 ### Enterprise execution evidence

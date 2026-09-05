@@ -73,9 +73,8 @@ def run_cycle(output_dir: Path) -> dict[str, object]:
         name="calculator-baseline",
         version="1.0.0",
         artifacts=(baseline_artifact.to_reference(),),
-        prompt_ref=baseline_artifact.to_reference(),
-        tools=("calculator",),
-        tool_bindings=("calculator-binding@1.0.0",),
+        prompt_ref=baseline_artifact.to_component_reference(),
+        tool_refs=("tool:calculator@1.0.0",),
         rationale="Initial deterministic calculator behavior.",
         created_at=CREATED_AT,
         metadata={"calculator_mode": "direct"},
@@ -248,7 +247,7 @@ def _manifest(
         dataset_version="1.0.0",
         candidate_id=candidate.candidate_id,
         candidate_artifact_ids=candidate.artifact_ids,
-        toolset=candidate.tools,
+        toolset=tuple(reference.component_id for reference in candidate.tool_refs),
         runtime_name=CalculatorRuntime.name,
         runtime_version=CalculatorRuntime.version,
         provider="deterministic",
@@ -256,17 +255,17 @@ def _manifest(
         seed=0,
         environment_snapshot=snapshot,
         prompt_ref=(
-            candidate.prompt_ref.registry_reference
+            candidate.prompt_ref.identity
             if candidate.prompt_ref is not None
-            and candidate.prompt_ref.registry_reference is not None
             else (
                 f"prompt:{prompt_artifact.artifact_id}@{prompt_artifact.version}"
                 if candidate.prompt_ref is not None
                 else None
             )
         ),
-        skill_refs=(),
-        tool_refs=tuple(f"tool:{tool}@1.0.0" for tool in candidate.tools),
+        skill_refs=tuple(reference.identity for reference in candidate.skill_refs),
+        tool_refs=tuple(reference.identity for reference in candidate.tool_refs),
+        policy_refs=tuple(reference.identity for reference in candidate.policy_refs),
         created_at=CREATED_AT,
         metadata={"example": "calculator-agent"},
     )

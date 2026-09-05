@@ -370,8 +370,7 @@ class SystemEvaluator:
             allowed_tools: set[str] = set()
             candidate = candidate_by_agent.get(trace.agent_id)
             if candidate is not None:
-                allowed_tools.update(candidate.tools)
-                allowed_tools.update(candidate.tool_bindings)
+                allowed_tools.update(reference.component_id for reference in candidate.tool_refs)
             if system_candidate is not None:
                 allowed_tools.update(system_candidate.shared_tool_ids)
             enforce_tool_allowlist = candidate is not None or system_candidate is not None
@@ -608,8 +607,9 @@ def _delegation_authorization_violations(
         declared_tools = set(shared_tools)
         target_candidate = candidates.get(edge.target_agent_id)
         if target_candidate is not None:
-            declared_tools.update(target_candidate.tools)
-            declared_tools.update(target_candidate.tool_bindings)
+            declared_tools.update(
+                reference.component_id for reference in target_candidate.tool_refs
+            )
         enforce_tool_scope = target_candidate is not None or system_candidate is not None
         unauthorized = enforce_tool_scope and any(
             not _component_allowed(tool_id, declared_tools) for tool_id in event.authorized_tool_ids

@@ -38,7 +38,10 @@ class CalculatorRuntime:
         if timestamp is None:
             raise ValueError("Calculator cases need a collected_at timestamp")
         mode = candidate.metadata.get("calculator_mode")
-        uses_tool = mode == "tool" or (mode is None and "calculator" in candidate.tools)
+        uses_tool = mode == "tool" or (
+            mode is None
+            and "calculator" in {reference.component_id for reference in candidate.tool_refs}
+        )
         result = _calculate(expression)
         events: list[ExecutionEventRecord] = [
             MessageEvent(

@@ -187,6 +187,10 @@ Candidates are complete enterprise agent definitions, not prompt patches.
 
 Candidate artifacts can represent prompts, skills, tools, policies, routing, models, memory, retrieval, workflows, approvals, and configuration.
 
+`CandidateComponentReference` pins each prompt, skill, tool, and policy to one
+component ID and version. Optional artifact lineage pins its source checksum.
+The Harness adapter does not resolve bare candidate IDs.
+
 Typed candidate changes explain what changed and why.
 
 `ImprovementScope` limits which changes can occur and protects resources such as datasets, evaluators, promotion rules, policies, permissions, agents, skills, and tools.

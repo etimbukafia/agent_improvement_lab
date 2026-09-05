@@ -340,3 +340,29 @@ skill, tool, and policy versions without making the Lab a runtime.
 
 ### Risks
 The adapter must reject incomplete or conflicting component provenance.
+
+---
+
+## Decision 18 — Pin candidate component identity in the Lab core
+
+### Context
+The first Prompt/Skill migration let candidates store skill, tool, and policy
+IDs without versions. The adapter could resolve these IDs later. Registry
+changes could therefore make the proposed candidate identity unclear.
+
+### Decision
+Use one provider-neutral `CandidateComponentReference` for `prompt_ref`,
+`skill_refs`, `tool_refs`, and `policy_refs`. Require component kind, ID,
+version, and canonical registry identity before the Harness boundary. Preserve
+artifact ID, artifact version, and checksum together when an artifact supplies
+the component.
+
+Drop `skill_selected` and `skill_selection` from safe trace metadata. Accept a
+skill-selection claim only through a future explicit Harness event contract.
+
+### Consequences
+Candidate intent is exact before registry access. Comparison and manifest
+validation can compare the proposed graph with the built graph directly.
+
+### Risks
+Producers must migrate from bare IDs to exact versioned component references.

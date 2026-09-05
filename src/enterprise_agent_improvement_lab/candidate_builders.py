@@ -17,6 +17,8 @@ from enterprise_agent_improvement_lab.contracts.candidates import (
     CandidateArtifact,
     CandidateArtifactKind,
     CandidateArtifactReference,
+    CandidateComponentKind,
+    CandidateComponentReference,
     ChangeKind,
     EnterpriseAgentCandidate,
     EnterpriseCandidateChange,
@@ -979,39 +981,41 @@ def _candidate_from_change(
     created_at: datetime,
 ) -> EnterpriseAgentCandidate:
     parent = request.parent_candidate
-    tools = _update_component_ids(
-        parent.tools,
+    component_reference = _changed_component_reference(
+        request,
+        change.change_kind,
+        target_id,
+        replacement,
+    )
+    tool_refs = _update_component_references(
+        parent.tool_refs,
         target_id,
         change.change_kind,
-        {ChangeKind.TOOL_ADDITION},
+        {ChangeKind.TOOL_ADDITION, ChangeKind.TOOL_CONFIGURATION_CHANGE},
         {ChangeKind.TOOL_REMOVAL},
+        component_reference,
     )
-    skills = _update_component_ids(
-        parent.skills,
+    skill_refs = _update_component_references(
+        parent.skill_refs,
         target_id,
         change.change_kind,
         {ChangeKind.SKILL_ADDITION},
         {ChangeKind.SKILL_REMOVAL},
+        component_reference,
     )
-    policies = _update_component_ids(
-        parent.policies,
+    policy_refs = _update_component_references(
+        parent.policy_refs,
         target_id,
         change.change_kind,
         set(),
         set(),
+        component_reference,
         replace_policy=change.change_kind
         in {
             ChangeKind.POLICY_CHANGE,
             ChangeKind.PERMISSION_CHANGE,
             ChangeKind.APPROVAL_RULE_CHANGE,
         },
-    )
-    tool_bindings = _update_component_ids(
-        parent.tool_bindings,
-        target_id,
-        change.change_kind,
-        {ChangeKind.TOOL_ADDITION, ChangeKind.TOOL_CONFIGURATION_CHANGE},
-        {ChangeKind.TOOL_REMOVAL},
     )
     configuration_field = {
         ChangeKind.MODEL_CHANGE: "model_configuration",
@@ -1031,7 +1035,10 @@ def _candidate_from_change(
         "parent_candidate_id": parent.candidate_id,
         "artifacts": references,
         "prompt_ref": (
-            replacement.to_reference()
+            replacement.to_component_reference(
+                component_kind=CandidateComponentKind.PROMPT,
+                component_id=(target_id if replacement.registry_reference is None else None),
+            )
             if replacement is not None
             and replacement.kind
             in {
@@ -1042,10 +1049,9 @@ def _candidate_from_change(
             else parent.prompt_ref
         ),
         "runtime_profile": parent.runtime_profile,
-        "tools": tools,
-        "tool_bindings": tool_bindings,
-        "skills": skills,
-        "policies": policies,
+        "tool_refs": tool_refs,
+        "skill_refs": skill_refs,
+        "policy_refs": policy_refs,
         "model_configuration": parent.model_configuration,
         "memory_configuration": parent.memory_configuration,
         "retrieval_configuration": parent.retrieval_configuration,
@@ -1071,25 +1077,59 @@ def _candidate_from_change(
     return EnterpriseAgentCandidate(**values)
 
 
-def _update_component_ids(
-    values: Sequence[str],
+def _update_component_references(
+    values: Sequence[CandidateComponentReference],
     target_id: str | None,
     change_kind: ChangeKind,
     additions: set[ChangeKind],
     removals: set[ChangeKind],
+    replacement: CandidateComponentReference | None,
     *,
     replace_policy: bool = False,
-) -> tuple[str, ...]:
+) -> tuple[CandidateComponentReference, ...]:
     result = list(values)
     if target_id is None:
         return tuple(result)
-    if change_kind in additions and target_id not in result:
-        result.append(target_id)
+    if change_kind in additions and replacement is not None:
+        result = [item for item in result if item.component_id != target_id]
+        result.append(replacement)
     if change_kind in removals:
-        result = [value for value in result if value != target_id]
-    if replace_policy and target_id not in result:
-        result.append(target_id)
+        result = [item for item in result if item.component_id != target_id]
+    if replace_policy and replacement is not None:
+        result = [item for item in result if item.component_id != target_id]
+        result.append(replacement)
     return tuple(result)
+
+
+def _changed_component_reference(
+    request: CandidateBuildRequest,
+    change_kind: ChangeKind,
+    target_id: str | None,
+    replacement: CandidateArtifact | None,
+) -> CandidateComponentReference | None:
+    component_kind = {
+        ChangeKind.TOOL_ADDITION: CandidateComponentKind.TOOL,
+        ChangeKind.TOOL_CONFIGURATION_CHANGE: CandidateComponentKind.TOOL,
+        ChangeKind.SKILL_ADDITION: CandidateComponentKind.SKILL,
+        ChangeKind.POLICY_CHANGE: CandidateComponentKind.POLICY,
+        ChangeKind.PERMISSION_CHANGE: CandidateComponentKind.POLICY,
+        ChangeKind.APPROVAL_RULE_CHANGE: CandidateComponentKind.POLICY,
+    }.get(change_kind)
+    if component_kind is None or target_id is None:
+        return None
+    if replacement is not None:
+        return replacement.to_component_reference(
+            component_kind=component_kind,
+            component_id=(target_id if replacement.registry_reference is None else None),
+        )
+    version = request.target_version
+    registry_reference = request.target_registry_reference or request.registry_reference
+    return CandidateComponentReference(
+        component_kind=component_kind,
+        component_id=target_id,
+        version=version,
+        registry_reference=(registry_reference or f"{component_kind.value}:{target_id}@{version}"),
+    )
 
 
 def _diff(

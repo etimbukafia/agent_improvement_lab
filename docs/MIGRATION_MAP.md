@@ -81,7 +81,7 @@ These areas now use the enterprise architecture as the implementation surface.
 | --- | --- | --- |
 | `CAPABILITY_CONFIGURATION` | `SKILL_CONFIGURATION` | Lab candidate artifact |
 | `CAPABILITY_ADDITION` / `CAPABILITY_REMOVAL` | `SKILL_ADDITION` / `SKILL_REMOVAL` | Lab change kind |
-| `capabilities` | `skills` | Lab candidate intent |
+| `capabilities` and bare component IDs | exact `CandidateComponentReference` values | Lab candidate intent |
 | `AgentConfig.capabilities` | `AgentConfig.skill_refs` | Harness adapter |
 | prompt text in metadata | `PromptDefinition` + `prompt_ref` | Harness adapter |
 

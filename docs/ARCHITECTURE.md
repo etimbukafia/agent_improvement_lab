@@ -31,7 +31,7 @@ The Lab owns:
 - evidence-governance contracts;
 - storage interfaces for Lab records.
 
-### Enterprise Agent Harness
+### [Enterprise Agent Harness](https://github.com/etimbukafia/enterprise-agent-harness)
 
 Enterprise Agent Harness owns:
 
@@ -45,7 +45,7 @@ Enterprise Agent Harness owns:
 - runtime state;
 - runtime safety;
 - runtime tracing;
-- agent, tool, capability, and policy registries.
+- agent, prompt, skill, tool, and policy registries.
 
 The Harness is an integration. It is not a dependency of the Lab core.
 
@@ -56,7 +56,7 @@ Applications own:
 - business problem discovery;
 - business-specific orchestration;
 - product workflows;
-- decisions about which agents or capabilities to build.
+- decisions about which agents, prompts, skills, or tools to build.
 
 ## System shape
 
@@ -185,11 +185,11 @@ One evaluation case must not leak state into another case.
 
 Candidates are complete enterprise agent definitions, not prompt patches.
 
-Candidate artifacts can represent prompts, tools, policies, routing, models, memory, retrieval, workflows, approvals, capabilities, and configuration.
+Candidate artifacts can represent prompts, skills, tools, policies, routing, models, memory, retrieval, workflows, approvals, and configuration.
 
 Typed candidate changes explain what changed and why.
 
-`ImprovementScope` limits which changes can occur and protects resources such as datasets, evaluators, promotion rules, policies, permissions, agents, tools, and capabilities.
+`ImprovementScope` limits which changes can occur and protects resources such as datasets, evaluators, promotion rules, policies, permissions, agents, skills, and tools.
 
 Candidate lineage remains explicit and immutable.
 
@@ -211,7 +211,7 @@ EnterpriseAgentCandidate
 
 Root-cause and planning decisions must reference evidence.
 
-The Lab prefers existing approved tools and capabilities over unrestricted generation.
+The Lab prefers existing approved skills and tools over unrestricted generation.
 
 Arbitrary executable code generation is outside the v0.1 scope.
 

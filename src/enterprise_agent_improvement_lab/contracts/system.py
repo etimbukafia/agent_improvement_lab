@@ -109,7 +109,7 @@ class SystemCandidate(ContractModel):
     )
     shared_tool_ids: tuple[str, ...] = ()
     shared_policy_ids: tuple[str, ...] = ()
-    shared_capability_ids: tuple[str, ...] = ()
+    shared_skill_ids: tuple[str, ...] = ()
     interaction_constraints: tuple[SystemInteractionConstraint, ...] = ()
     parent_system_candidate_id: str | None = None
     lineage: SystemCandidateLineage = Field(default_factory=SystemCandidateLineage)
@@ -133,7 +133,7 @@ class SystemCandidate(ContractModel):
         for name, values in (
             ("shared_tool_ids", self.shared_tool_ids),
             ("shared_policy_ids", self.shared_policy_ids),
-            ("shared_capability_ids", self.shared_capability_ids),
+            ("shared_skill_ids", self.shared_skill_ids),
         ):
             if any(not value.strip() for value in values):
                 raise ValueError(f"{name} must contain non-empty IDs")

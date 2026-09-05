@@ -33,3 +33,16 @@ enterprise fields. They can be removed in a future schema-version migration
 after stored data has been reserialized.
 
 The canonical package name is `enterprise_agent_improvement_lab`.
+
+## Harness artifact model
+
+Active candidate APIs use `skills`, `SKILL_CONFIGURATION`,
+`SKILL_ADDITION`, and `SKILL_REMOVAL`. Root-cause hypotheses use
+`affected_skill`. The Harness adapter uses exact `prompt_ref`, `skill_refs`,
+`tool_refs`, and `policy_refs` values. It does not build obsolete
+`capabilities`, `allowed_tools`, or AgentConfig `policies` fields.
+
+The adapter may materialize Lab prompt and skill artifacts into the current
+[Enterprise Agent Harness](https://github.com/etimbukafia/enterprise-agent-harness)
+`PromptDefinition` and `SkillDefinition` contracts. A skill dependency is not
+tool authority.

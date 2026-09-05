@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol
 
-from pydantic import AliasChoices, ConfigDict, Field
+from pydantic import AliasChoices, ConfigDict, Field, model_validator
 
 from enterprise_agent_improvement_lab.contracts.candidates import (
     CandidateArtifact,
@@ -25,8 +25,9 @@ class HarnessComponentKind(StrEnum):
     """Registry component kinds understood by the adapter."""
 
     AGENT = "agent"
+    PROMPT = "prompt"
+    SKILL = "skill"
     TOOL = "tool"
-    CAPABILITY = "capability"
     POLICY = "policy"
     APPROVAL_POLICY = "approval_policy"
     RUNTIME_PROFILE = "runtime_profile"
@@ -44,7 +45,7 @@ class HarnessRegistryReference(ContractModel):
     )
 
     component_kind: HarnessComponentKind = Field(
-        validation_alias=AliasChoices("component_kind", "kind", "type")
+        validation_alias=AliasChoices("component_kind", "component_type", "kind", "type")
     )
     component_id: str = Field(
         min_length=1,
@@ -82,12 +83,52 @@ class HarnessRuntimeIdentity(ContractModel):
     agent_id: str = Field(min_length=1)
     agent_version: VersionString
     candidate_id: str = Field(min_length=1)
+    manifest_id: str | None = Field(default=None, min_length=1)
+    # The Harness owns the digest algorithm and representation.  Preserve its
+    # exact non-empty value instead of imposing a Lab-specific hash format.
+    manifest_digest: str | None = Field(default=None, min_length=1)
+    registry_snapshot_id: str | None = Field(default=None, min_length=1)
 
     @property
     def agent_identity(self) -> str:
         """Return the exact agent identity."""
 
         return f"{self.agent_id}@{self.agent_version}"
+
+
+class HarnessManifestProvenance(ContractModel):
+    """Safe exact provenance for the Harness build evaluated by the Lab.
+
+    The model stores identities and hashes only.  It does not copy prompt
+    instructions, tool handlers, policy rules, or other runtime payloads.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        str_strip_whitespace=True,
+        validate_assignment=True,
+    )
+
+    candidate_id: str = Field(min_length=1)
+    manifest_id: str = Field(min_length=1)
+    manifest_digest: str = Field(min_length=1)
+    registry_snapshot_id: str = Field(min_length=1)
+    agent_ref: str = Field(min_length=1)
+    prompt_ref: str = Field(min_length=1)
+    skill_refs: tuple[str, ...] = ()
+    tool_refs: tuple[str, ...] = ()
+    policy_refs: tuple[str, ...] = ()
+    runtime_profile: str | None = Field(default=None, min_length=1)
+    provider_profile: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def references_are_unique(self) -> "HarnessManifestProvenance":
+        for name in ("skill_refs", "tool_refs", "policy_refs"):
+            values = getattr(self, name)
+            if len(values) != len(set(values)):
+                raise ValueError(f"{name} must contain unique references")
+        return self
 
 
 @dataclass(frozen=True)
@@ -105,6 +146,9 @@ class HarnessCandidateDefinition:
     artifact_references: tuple[CandidateArtifactReference, ...]
     artifacts: tuple[CandidateArtifact, ...] = ()
     registry_references: tuple[HarnessRegistryReference, ...] = ()
+    materialized_prompt: object | None = None
+    materialized_skills: tuple[object, ...] = ()
+    provenance: HarnessManifestProvenance | None = None
 
     @property
     def candidate_id(self) -> str:
@@ -148,6 +192,18 @@ class HarnessBuiltCandidate:
 
         return self.built_agent
 
+    @property
+    def manifest(self) -> object | None:
+        """Return the Harness-owned resolved manifest, when available."""
+
+        return getattr(self.built_agent, "manifest", None)
+
+    @property
+    def provenance(self) -> HarnessManifestProvenance | None:
+        """Return safe resolved-build provenance, when captured."""
+
+        return self.definition.provenance
+
 
 @dataclass(frozen=True)
 class HarnessExecutionResult:
@@ -184,6 +240,7 @@ __all__ = [
     "HarnessCandidateDefinition",
     "HarnessComponentKind",
     "HarnessExecutionResult",
+    "HarnessManifestProvenance",
     "HarnessRegistryReference",
     "HarnessRuntimeIdentity",
 ]

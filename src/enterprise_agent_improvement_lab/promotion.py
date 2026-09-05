@@ -92,6 +92,17 @@ class EnterprisePromotionEngine:
             policy_id=self.policy.policy_id,
             hard_gates=hard,
             soft_gates=soft,
+            baseline_candidate_id=comparison.baseline_candidate_id,
+            baseline_manifest_id=comparison.baseline_manifest_id,
+            candidate_manifest_id=comparison.candidate_manifest_id,
+            baseline_manifest_digest=comparison.baseline_manifest_digest,
+            candidate_manifest_digest=comparison.candidate_manifest_digest,
+            baseline_environment_snapshot_id=comparison.baseline_environment_snapshot_id,
+            candidate_environment_snapshot_id=comparison.candidate_environment_snapshot_id,
+            component_changes=comparison.component_changes,
+            component_change_refs=tuple(
+                _component_change_ref(change) for change in comparison.component_changes
+            ),
             eligible=all(gate.passed for gate in hard),
             created_at=created_at or utc_now(),
         )
@@ -268,6 +279,17 @@ class RiskAwarePromotionEngine:
             failed_evidence_ids=tuple(failed),
             reviewer_roles=roles,
             missing_reviewer_roles=missing_roles,
+            baseline_candidate_id=comparison.baseline_candidate_id,
+            baseline_manifest_id=comparison.baseline_manifest_id,
+            candidate_manifest_id=comparison.candidate_manifest_id,
+            baseline_manifest_digest=comparison.baseline_manifest_digest,
+            candidate_manifest_digest=comparison.candidate_manifest_digest,
+            baseline_environment_snapshot_id=comparison.baseline_environment_snapshot_id,
+            candidate_environment_snapshot_id=comparison.candidate_environment_snapshot_id,
+            component_changes=comparison.component_changes,
+            component_change_refs=tuple(
+                _component_change_ref(change) for change in comparison.component_changes
+            ),
             eligible=eligible,
             human_decision_required=True,
             created_at=created_at or utc_now(),
@@ -527,6 +549,19 @@ class PromotionService:
             decided_at=timestamp,
             reason=reason,
             previous_active_candidate_id=previous,
+            baseline_candidate_id=comparison.baseline_candidate_id,
+            baseline_manifest_id=comparison.baseline_manifest_id,
+            candidate_manifest_id=comparison.candidate_manifest_id,
+            baseline_manifest_digest=comparison.baseline_manifest_digest,
+            candidate_manifest_digest=comparison.candidate_manifest_digest,
+            baseline_environment_snapshot_id=comparison.baseline_environment_snapshot_id,
+            candidate_environment_snapshot_id=comparison.candidate_environment_snapshot_id,
+            component_changes=comparison.component_changes,
+            evaluation_evidence_refs=tuple(
+                metric.metric_id for metric in comparison.enterprise_metrics
+            ),
+            regression_evidence_refs=comparison.regressions,
+            risk_evidence_refs=comparison.hard_regressions,
         )
         self.store.decisions.save(decision)
         if outcome == PromotionOutcome.APPROVED:
@@ -584,6 +619,17 @@ class PromotionService:
             previous_active_candidate_id=active.candidate_id,
             rollback_of_decision_id=original.decision_id,
             restored_candidate_id=restored,
+            baseline_candidate_id=original.baseline_candidate_id,
+            baseline_manifest_id=original.baseline_manifest_id,
+            candidate_manifest_id=original.candidate_manifest_id,
+            baseline_manifest_digest=original.baseline_manifest_digest,
+            candidate_manifest_digest=original.candidate_manifest_digest,
+            baseline_environment_snapshot_id=original.baseline_environment_snapshot_id,
+            candidate_environment_snapshot_id=original.candidate_environment_snapshot_id,
+            component_changes=original.component_changes,
+            evaluation_evidence_refs=original.evaluation_evidence_refs,
+            regression_evidence_refs=original.regression_evidence_refs,
+            risk_evidence_refs=original.risk_evidence_refs,
         )
         self.store.decisions.save(rollback)
         self.store.active_candidate.save(
@@ -700,3 +746,12 @@ def _is_security_regression(value: str) -> bool:
 
 def _unique(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
+
+
+def _component_change_ref(change: object) -> str:
+    """Return a stable evidence reference for one component difference."""
+
+    component_type = getattr(change, "component_type", "component")
+    component_id = getattr(change, "component_id", "unknown")
+    summary = getattr(change, "summary", "")
+    return f"component:{component_type}:{component_id}:{summary}"

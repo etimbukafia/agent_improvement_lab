@@ -8,6 +8,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -38,9 +39,9 @@ from enterprise_agent_improvement_lab.integrations.enterprise_agent_harness impo
     HarnessRegistryReference,
     harness_agent_definition_to_candidate_artifact,
     harness_approval_policy_to_candidate_artifact,
-    harness_capability_definition_to_candidate_artifact,
     harness_policy_definition_to_candidate_artifact,
     harness_run_trace_to_execution_trace,
+    harness_skill_definition_to_candidate_artifact,
     harness_tool_definition_to_candidate_artifact,
 )
 
@@ -124,20 +125,57 @@ class _FakeAgentConfig:
         return cls(**values)
 
 
+class _FakeComponentType(str, Enum):
+    AGENT = "agent"
+    PROMPT = "prompt"
+    SKILL = "skill"
+    TOOL = "tool"
+    POLICY = "policy"
+
+
+class _FakeLifecycle(str, Enum):
+    ACTIVE = "active"
+    DRAFT = "draft"
+
+
+class _FakeRisk(str, Enum):
+    LOW = "low"
+
+
+class _FakeComponentReference:
+    def __init__(self, *, component_type: _FakeComponentType, component_id: str, version: str):
+        self.component_type = component_type
+        self.component_id = component_id
+        self.version = version
+
+
+class _FakeDefinition:
+    def __init__(self, **values: Any) -> None:
+        self.values = values
+        for key, value in values.items():
+            setattr(self, key, value)
+
+    @classmethod
+    def model_validate(cls, values: dict[str, Any]) -> "_FakeDefinition":
+        return cls(**values)
+
+
 class _FakeHarnessModule:
     __version__ = "0.1.0"
     AgentConfig = _FakeAgentConfig
+    ComponentType = _FakeComponentType
+    ComponentReference = _FakeComponentReference
+    PromptDefinition = _FakeDefinition
+    SkillDefinition = _FakeDefinition
+    AgentLifecycleStatus = _FakeLifecycle
+    RiskLevel = _FakeRisk
 
 
 @dataclass
 class _FakeBuiltAgent:
     trace: _RunTrace
     outcome: _Outcome
-    manifest: object = field(
-        default_factory=lambda: SimpleNamespace(
-            agent=SimpleNamespace(agent_id="orders-agent", version="1.0.0")
-        )
-    )
+    manifest: object | None = None
 
     def execute(self, principal: object, input_text: str, **kwargs: Any) -> _Outcome:
         del principal, input_text, kwargs
@@ -187,9 +225,13 @@ class _FakeRegistry:
             ],
             revision=4,
         )
-        self.capabilities = _FakeComponentRegistry(
-            [{"capability_id": "order-review", "version": "1.0.0"}],
+        self.prompts = _FakeComponentRegistry(
+            [{"prompt_id": "orders-prompt", "version": "1.0.0"}],
             revision=2,
+        )
+        self.skills = _FakeComponentRegistry(
+            [{"skill_id": "order-review", "version": "1.0.0"}],
+            revision=3,
         )
         self.policies = [
             {
@@ -261,10 +303,16 @@ def _candidate() -> tuple[EnterpriseAgentCandidate, tuple[CandidateArtifact, ...
             "tool:orders.read@1.0.0",
         ),
         _artifact(
-            "capability-definition-1",
-            CandidateArtifactKind.CAPABILITY_CONFIGURATION,
-            '{"capability_id":"order-review","version":"1.0.0"}',
-            "capability:order-review@1.0.0",
+            "prompt-definition-1",
+            CandidateArtifactKind.SYSTEM_PROMPT,
+            '{"purpose":"Review orders.","instructions":"Review orders safely."}',
+            "prompt:orders-prompt@1.0.0",
+        ),
+        _artifact(
+            "skill-definition-1",
+            CandidateArtifactKind.SKILL_CONFIGURATION,
+            '{"skill_id":"order-review","version":"1.0.0","description":"Review orders."}',
+            "skill:order-review@1.0.0",
         ),
         _artifact(
             "policy-definition-1",
@@ -278,8 +326,9 @@ def _candidate() -> tuple[EnterpriseAgentCandidate, tuple[CandidateArtifact, ...
         agent_id="orders-agent",
         version="1.0.0",
         artifacts=tuple(item.to_reference() for item in artifacts),
+        prompt_ref=artifacts[2].to_reference(),
         tools=("orders.read",),
-        capabilities=("order-review",),
+        skills=("order-review",),
         policies=("orders-policy",),
     )
     return candidate, artifacts
@@ -342,14 +391,15 @@ def test_lab_candidate_becomes_harness_compatible_definition() -> None:
         "agent_id": "orders-agent",
         "version": "1.0.0",
     }
-    assert definition.agent_config.values["allowed_tools"] == [
-        {"component_id": "orders.read", "version": "1.0.0"}
+    assert definition.agent_config.values["prompt_ref"].component_id == "orders-prompt"
+    assert [item.component_id for item in definition.agent_config.values["skill_refs"]] == [
+        "order-review"
     ]
-    assert definition.agent_config.values["capabilities"] == [
-        {"component_id": "order-review", "version": "1.0.0"}
+    assert [item.component_id for item in definition.agent_config.values["tool_refs"]] == [
+        "orders.read"
     ]
-    assert definition.agent_config.values["policies"] == [
-        {"component_id": "orders-policy", "version": "1.0.0"}
+    assert [item.component_id for item in definition.agent_config.values["policy_refs"]] == [
+        "orders-policy"
     ]
 
 
@@ -390,7 +440,8 @@ def test_harness_snapshot_collector_maps_public_registry_state() -> None:
     assert first.identity == second.identity
     assert first.agent_registry_version == "7"
     assert first.tool_registry_version == "4"
-    assert first.capability_registry_version == "2"
+    assert first.prompt_registry_version == "2"
+    assert first.skill_registry_version == "3"
     assert first.provider == "deterministic"
     assert first.model == "orders-model"
     assert first.tool_hashes[0].identity == "orders.read@1.0.0"
@@ -418,9 +469,9 @@ def test_harness_definitions_translate_to_immutable_lab_artifacts() -> None:
         created_at=NOW,
         kind=CandidateArtifactKind.TOOL_BINDING,
     )
-    capability = harness_capability_definition_to_candidate_artifact(
+    skill = harness_skill_definition_to_candidate_artifact(
         {
-            "capability_id": "order-review",
+            "skill_id": "order-review",
             "version": "1.0.0",
             "description": "Review orders.",
             "supported_operations": ["read"],
@@ -440,17 +491,17 @@ def test_harness_definitions_translate_to_immutable_lab_artifacts() -> None:
         created_at=NOW,
     )
 
-    assert [item.kind for item in (agent, tool, capability, policy, approval)] == [
+    assert [item.kind for item in (agent, tool, skill, policy, approval)] == [
         CandidateArtifactKind.AGENT_DEFINITION,
         CandidateArtifactKind.TOOL_BINDING,
-        CandidateArtifactKind.CAPABILITY_CONFIGURATION,
+        CandidateArtifactKind.SKILL_CONFIGURATION,
         CandidateArtifactKind.POLICY,
         CandidateArtifactKind.APPROVAL_POLICY,
     ]
     assert agent.registry_reference == "agent:orders-agent@1.0.0"
     assert tool.registry_reference == "tool:orders.read@1.0.0"
     assert all(item.provenance.source == "enterprise-agent-harness" for item in (agent, tool))
-    assert all(item.checksum for item in (agent, tool, capability, policy, approval))
+    assert all(item.checksum for item in (agent, tool, skill, policy, approval))
 
 
 def test_harness_agent_executes_through_adapter_and_preserves_identity() -> None:
@@ -513,6 +564,7 @@ def test_harness_agent_executes_through_adapter_and_preserves_identity() -> None
     tool_event = result.trace.events[1]
     assert isinstance(tool_event, ToolCallEvent)
     assert tool_event.evidence_refs == ("evidence-order-1",)
+    assert tool_event.arguments == {}
     assert tool_event.metadata["harness_idempotency_key_digest"] == "idempotency-digest-1"
     assert isinstance(result.trace.events[2], StateMutationEvent)
     assert result.trace.evidence_refs == ("evidence-outcome-1", "evidence-order-1")
@@ -747,18 +799,8 @@ def test_real_harness_agent_round_trip_when_package_is_available() -> None:
         handler=lambda _context, arguments: Answer(value=arguments.query),
     )
     tools = harness.ToolRegistry([tool])
-    capability_registry = harness.CapabilityRegistry(tools=tools)
-    capability_registry.register(
-        harness.CapabilityDefinition(
-            capability_id="order-review",
-            version="1.0.0",
-            description="Review orders.",
-            supported_operations=["read"],
-            supported_intents=["review"],
-            allowed_tool_ids=["orders.read"],
-            lifecycle=harness.AgentLifecycleStatus.ACTIVE,
-        )
-    )
+    prompts = harness.PromptRegistry()
+    skill_registry = harness.SkillRegistry(tools=tools)
     policy = harness.PolicyDefinition(
         policy_id="orders-policy",
         version="1.0.0",
@@ -774,7 +816,8 @@ def test_real_harness_agent_round_trip_when_package_is_available() -> None:
         lifecycle=harness.AgentLifecycleStatus.ACTIVE,
     )
     registry = harness.AgentRegistry(
-        capabilities=capability_registry,
+        prompts=prompts,
+        skills=skill_registry,
         tools=tools,
         policies=[policy],
     )
@@ -792,6 +835,12 @@ def test_real_harness_agent_round_trip_when_package_is_available() -> None:
     candidate, artifacts = _candidate()
     adapter = EnterpriseAgentHarnessAdapter()
     built = adapter.build_candidate(candidate, factory, artifacts=artifacts)
+    assert built.provenance is not None
+    assert built.provenance.prompt_ref == "prompt:orders-prompt@1.0.0"
+    assert built.provenance.skill_refs == ("skill:order-review@1.0.0",)
+    assert built.provenance.tool_refs == ("tool:orders.read@1.0.0",)
+    assert built.provenance.policy_refs == ("policy:orders-policy@1.0.0",)
+    assert len(built.provenance.manifest_digest) == 64
 
     outcome = adapter.execute(
         built,
@@ -809,6 +858,10 @@ def test_real_harness_agent_round_trip_when_package_is_available() -> None:
     assert outcome.trace.agent_id == "orders-agent"
     assert outcome.trace.candidate_id == candidate.candidate_id
     assert outcome.trace.events
+    assert outcome.trace.prompt_ref == "prompt:orders-prompt@1.0.0"
+    assert outcome.trace.skill_refs == ("skill:order-review@1.0.0",)
+    assert outcome.trace.manifest_id == built.provenance.manifest_id
+    assert outcome.trace.manifest_digest == built.provenance.manifest_digest
 
     snapshot = adapter.collect_environment_snapshot(
         candidate,

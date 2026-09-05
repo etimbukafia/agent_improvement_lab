@@ -403,6 +403,13 @@ class ExecutionTrace(ContractModel):
     principal_id: str | None = None
     tenant_id: str | None = None
     principal_roles: tuple[str, ...] = ()
+    # Safe exact provenance references.  The Lab stores identities only; it
+    # does not copy prompt text or runtime registry records into a trace.
+    manifest_id: str | None = Field(default=None, min_length=1)
+    manifest_digest: str | None = Field(default=None, min_length=1)
+    registry_snapshot_id: str | None = Field(default=None, min_length=1)
+    prompt_ref: str | None = Field(default=None, min_length=1)
+    skill_refs: tuple[str, ...] = ()
     trigger: TriggerInfo = Field(default_factory=lambda: TriggerInfo(kind="unknown"))
     started_at: datetime
     ended_at: datetime | None = None
@@ -436,6 +443,8 @@ class ExecutionTrace(ContractModel):
         sequences = [event.sequence for event in self.events]
         if len(sequences) != len(set(sequences)):
             raise ValueError("Event sequence values must be unique within an execution trace")
+        if len(self.skill_refs) != len(set(self.skill_refs)):
+            raise ValueError("skill_refs must be unique within an execution trace")
 
         ordered = tuple(sorted(self.events, key=lambda event: event.sequence))
         if ordered != self.events:
@@ -481,6 +490,11 @@ class ExecutionTraceSummary(ContractModel):
     delegation_count: int = Field(default=0, ge=0)
     error_count: int = Field(default=0, ge=0)
     evidence_refs: tuple[str, ...] = ()
+    manifest_id: str | None = Field(default=None, min_length=1)
+    manifest_digest: str | None = Field(default=None, min_length=1)
+    registry_snapshot_id: str | None = Field(default=None, min_length=1)
+    prompt_ref: str | None = Field(default=None, min_length=1)
+    skill_refs: tuple[str, ...] = ()
     evaluation_score_ids: tuple[str, ...] = ()
 
     @field_validator("total_cost")
@@ -561,6 +575,11 @@ def summarize_execution_trace(
         ),
         evidence_refs=trace.evidence_refs,
         evaluation_score_ids=score_ids,
+        manifest_id=trace.manifest_id,
+        manifest_digest=trace.manifest_digest,
+        registry_snapshot_id=trace.registry_snapshot_id,
+        prompt_ref=trace.prompt_ref,
+        skill_refs=trace.skill_refs,
     )
 
 

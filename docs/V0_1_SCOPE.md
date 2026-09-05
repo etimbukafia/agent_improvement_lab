@@ -54,7 +54,7 @@ The baseline agent cannot retrieve live shipment tracking.
 1. Evaluate baseline.
 2. Detect delivery failures.
 3. Cluster failures.
-4. Identify missing tracking capability.
+4. Identify the missing tracking tool.
 5. Create root-cause hypothesis.
 6. Choose TOOL_ADDITION.
 7. Attach approved get_tracking tool.
@@ -94,3 +94,6 @@ The v0.1 architecture is proven when the system can answer:
 - What evidence supports that conclusion?
 
 The final promotion decision must remain human-controlled.
+
+The separate `examples/skill_addition.py` slice demonstrates that adding a
+Skill does not add executable Tool authority.

@@ -41,7 +41,7 @@ class CandidateArtifactKind(StrEnum):
     AGENT_DEFINITION = "agent_definition"
     TOOL_BINDING = "tool_binding"
     TOOL_CONFIGURATION = "tool_configuration"
-    CAPABILITY_CONFIGURATION = "capability_configuration"
+    SKILL_CONFIGURATION = "skill_configuration"
     POLICY = "policy"
     ROUTING_POLICY = "routing_policy"
     APPROVAL_POLICY = "approval_policy"
@@ -66,8 +66,8 @@ class ChangeKind(StrEnum):
     MEMORY_CHANGE = "memory_change"
     THRESHOLD_CHANGE = "threshold_change"
     WORKFLOW_CHANGE = "workflow_change"
-    CAPABILITY_ADDITION = "capability_addition"
-    CAPABILITY_REMOVAL = "capability_removal"
+    SKILL_ADDITION = "skill_addition"
+    SKILL_REMOVAL = "skill_removal"
     APPROVAL_RULE_CHANGE = "approval_rule_change"
 
 
@@ -333,21 +333,32 @@ class EnterpriseAgentCandidate(ContractModel):
             "artifacts", "artifact_references", "artifact_refs", "artifact_ids"
         ),
     )
+    # ``prompt_ref`` is a Lab-side artifact reference.  It is not a Harness
+    # ``ComponentReference``.  The adapter materializes or resolves the
+    # corresponding Harness PromptDefinition.
+    prompt_ref: CandidateArtifactReference | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "prompt_ref", "prompt", "prompt_artifact_ref", "prompt_artifact"
+        ),
+    )
     runtime_profile: str | None = Field(
         default=None,
         min_length=1,
         validation_alias=AliasChoices("runtime_profile", "runtime_profile_id"),
     )
-    tools: tuple[str, ...] = Field(default=(), validation_alias=AliasChoices("tools", "tool_ids"))
+    tools: tuple[str, ...] = Field(
+        default=(), validation_alias=AliasChoices("tools", "tool_ids", "tool_refs")
+    )
     tool_bindings: tuple[str, ...] = Field(
         default=(),
         validation_alias=AliasChoices("tool_bindings", "tool_binding_ids"),
     )
-    capabilities: tuple[str, ...] = Field(
-        default=(), validation_alias=AliasChoices("capabilities", "capability_ids")
+    skills: tuple[str, ...] = Field(
+        default=(), validation_alias=AliasChoices("skills", "skill_ids", "skill_refs")
     )
     policies: tuple[str, ...] = Field(
-        default=(), validation_alias=AliasChoices("policies", "policy_ids")
+        default=(), validation_alias=AliasChoices("policies", "policy_ids", "policy_refs")
     )
     model_configuration: str | None = Field(
         default=None,
@@ -391,6 +402,58 @@ class EnterpriseAgentCandidate(ContractModel):
     created_at: datetime = Field(default_factory=utc_now)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_prompt_reference(cls, value: Any) -> Any:
+        """Accept a provider-neutral exact prompt identity.
+
+        Lab contracts do not import Harness ``ComponentReference``.  A
+        compact ``prompt:id@version`` value is therefore stored as a pinned
+        ``CandidateArtifactReference`` with the registry identity retained.
+        """
+
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        if "prompt_ref" not in data:
+            for alias in ("prompt", "prompt_artifact_ref", "prompt_artifact"):
+                if alias in data:
+                    data["prompt_ref"] = data.pop(alias)
+                    break
+        if "prompt_ref" not in data:
+            return data
+        prompt = data.get("prompt_ref")
+        if isinstance(prompt, str):
+            raw = prompt.strip()
+            if "@" in raw:
+                if ":" in raw:
+                    prefix, identity = raw.split(":", 1)
+                else:
+                    prefix, identity = "prompt", raw
+                if prefix != "prompt":
+                    raise ValueError("prompt_ref must identify a prompt")
+                component_id, version = identity.rsplit("@", 1)
+                if component_id and version:
+                    data["prompt_ref"] = {
+                        "artifact_id": component_id,
+                        "version": version,
+                        "registry_reference": f"prompt:{component_id}@{version}",
+                    }
+        elif isinstance(prompt, dict):
+            prompt_data = dict(prompt)
+            if "prompt_id" in prompt_data and "artifact_id" not in prompt_data:
+                prompt_data["artifact_id"] = prompt_data.pop("prompt_id")
+            if (
+                prompt_data.get("registry_reference") is None
+                and prompt_data.get("artifact_id")
+                and prompt_data.get("version")
+            ):
+                prompt_data["registry_reference"] = (
+                    f"prompt:{prompt_data['artifact_id']}@{prompt_data['version']}"
+                )
+            data["prompt_ref"] = prompt_data
+        return data
+
     @model_validator(mode="after")
     def validate_candidate(self) -> "EnterpriseAgentCandidate":
         if self.parent_candidate_id == self.candidate_id:
@@ -404,13 +467,26 @@ class EnterpriseAgentCandidate(ContractModel):
         for name, values in (
             ("tools", self.tools),
             ("tool_bindings", self.tool_bindings),
-            ("capabilities", self.capabilities),
+            ("skills", self.skills),
             ("policies", self.policies),
         ):
             if any(not value for value in values):
                 raise ValueError(f"{name} must contain non-empty IDs")
             if len(values) != len(set(values)):
                 raise ValueError(f"{name} must contain unique IDs")
+        if self.prompt_ref is not None:
+            if self.prompt_ref.kind not in {
+                None,
+                CandidateArtifactKind.SYSTEM_PROMPT,
+                CandidateArtifactKind.DEVELOPER_PROMPT,
+                CandidateArtifactKind.USER_TEMPLATE,
+            }:
+                raise ValueError("prompt_ref must identify a prompt artifact")
+            if (
+                self.prompt_ref.registry_reference is not None
+                and not self.prompt_ref.registry_reference.startswith("prompt:")
+            ):
+                raise ValueError("prompt_ref registry_reference must use the prompt namespace")
         change_ids = tuple(change.change_id for change in self.changes)
         _validate_unique_ids("change_ids", change_ids)
         for change in self.changes:
@@ -524,11 +600,9 @@ class EnterpriseCandidateChange(ContractModel):
         default=None,
         validation_alias=AliasChoices("affected_tool_id", "affected_tool", "tool_id"),
     )
-    affected_capability_id: str | None = Field(
+    affected_skill_id: str | None = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "affected_capability_id", "affected_capability", "capability_id"
-        ),
+        validation_alias=AliasChoices("affected_skill_id", "affected_skill", "skill_id"),
     )
     affected_policy_id: str | None = Field(
         default=None,
@@ -589,8 +663,8 @@ class EnterpriseCandidateChange(ContractModel):
             ),
             ("affected_tool_id", ("affected_tool_id", "affected_tool", "tool_id")),
             (
-                "affected_capability_id",
-                ("affected_capability_id", "affected_capability", "capability_id"),
+                "affected_skill_id",
+                ("affected_skill_id", "affected_skill", "skill_id"),
             ),
             ("affected_policy_id", ("affected_policy_id", "affected_policy", "policy_id")),
         ):
@@ -637,7 +711,7 @@ class EnterpriseCandidateChange(ContractModel):
             for target in (
                 self.affected_artifact_id,
                 self.affected_tool_id,
-                self.affected_capability_id,
+                self.affected_skill_id,
                 self.affected_policy_id,
                 self.affected_permission_boundary,
             )
@@ -657,16 +731,16 @@ class EnterpriseCandidateChange(ContractModel):
         }:
             return self.affected_tool_id is not None
         if self.change_kind in {
-            ChangeKind.CAPABILITY_ADDITION,
-            ChangeKind.CAPABILITY_REMOVAL,
+            ChangeKind.SKILL_ADDITION,
+            ChangeKind.SKILL_REMOVAL,
         }:
-            return self.affected_capability_id is not None
+            return self.affected_skill_id is not None
         if self.change_kind in {ChangeKind.POLICY_CHANGE, ChangeKind.APPROVAL_RULE_CHANGE}:
             return self.affected_policy_id is not None or artifact_target
         if self.change_kind == ChangeKind.PERMISSION_CHANGE:
             return bool(
                 self.affected_tool_id
-                or self.affected_capability_id
+                or self.affected_skill_id
                 or self.affected_policy_id
                 or self.affected_permission_boundary
                 or artifact_target
@@ -690,7 +764,7 @@ class EnterpriseCandidateChange(ContractModel):
             self.change_kind
             in {
                 ChangeKind.TOOL_ADDITION,
-                ChangeKind.CAPABILITY_ADDITION,
+                ChangeKind.SKILL_ADDITION,
             }
             and self.before_reference is not None
         ):
@@ -699,7 +773,7 @@ class EnterpriseCandidateChange(ContractModel):
             self.change_kind
             in {
                 ChangeKind.TOOL_REMOVAL,
-                ChangeKind.CAPABILITY_REMOVAL,
+                ChangeKind.SKILL_REMOVAL,
             }
             and self.after_reference is not None
         ):
@@ -708,8 +782,8 @@ class EnterpriseCandidateChange(ContractModel):
         if self.change_kind not in {
             ChangeKind.TOOL_ADDITION,
             ChangeKind.TOOL_REMOVAL,
-            ChangeKind.CAPABILITY_ADDITION,
-            ChangeKind.CAPABILITY_REMOVAL,
+            ChangeKind.SKILL_ADDITION,
+            ChangeKind.SKILL_REMOVAL,
         }:
             if (self.before_reference is None) != (self.after_reference is None):
                 raise ValueError("before_reference and after_reference must be supplied together")
@@ -750,9 +824,8 @@ class ImprovementScope(ContractModel):
     allowed_tools: tuple[str, ...] = Field(
         default=(), validation_alias=AliasChoices("allowed_tools", "allowed_tool_ids")
     )
-    allowed_capabilities: tuple[str, ...] = Field(
-        default=(),
-        validation_alias=AliasChoices("allowed_capabilities", "allowed_capability_ids"),
+    allowed_skills: tuple[str, ...] = Field(
+        default=(), validation_alias=AliasChoices("allowed_skills", "allowed_skill_ids")
     )
     allowed_policies: tuple[str, ...] = Field(
         default=(), validation_alias=AliasChoices("allowed_policies", "allowed_policy_ids")
@@ -764,9 +837,8 @@ class ImprovementScope(ContractModel):
     protected_tools: tuple[str, ...] = Field(
         default=(), validation_alias=AliasChoices("protected_tools", "protected_tool_ids")
     )
-    protected_capabilities: tuple[str, ...] = Field(
-        default=(),
-        validation_alias=AliasChoices("protected_capabilities", "protected_capability_ids"),
+    protected_skills: tuple[str, ...] = Field(
+        default=(), validation_alias=AliasChoices("protected_skills", "protected_skill_ids")
     )
     protected_policies: tuple[str, ...] = Field(
         default=(), validation_alias=AliasChoices("protected_policies", "protected_policy_ids")
@@ -846,7 +918,7 @@ class ImprovementScope(ContractModel):
         for allowed_name, protected_name in (
             ("allowed_agents", "protected_agents"),
             ("allowed_tools", "protected_tools"),
-            ("allowed_capabilities", "protected_capabilities"),
+            ("allowed_skills", "protected_skills"),
             ("allowed_policies", "protected_policies"),
             ("allowed_artifact_ids", "protected_artifact_ids"),
         ):
@@ -860,12 +932,12 @@ class ImprovementScope(ContractModel):
         return (
             ("allowed_agents", self.allowed_agents),
             ("allowed_tools", self.allowed_tools),
-            ("allowed_capabilities", self.allowed_capabilities),
+            ("allowed_skills", self.allowed_skills),
             ("allowed_policies", self.allowed_policies),
             ("allowed_configuration_paths", self.allowed_configuration_paths),
             ("protected_agents", self.protected_agents),
             ("protected_tools", self.protected_tools),
-            ("protected_capabilities", self.protected_capabilities),
+            ("protected_skills", self.protected_skills),
             ("protected_policies", self.protected_policies),
             ("protected_permission_boundaries", self.protected_permission_boundaries),
             ("protected_datasets", self.protected_datasets),
@@ -900,9 +972,7 @@ class ImprovementScope(ContractModel):
 
         targets = self._change_target_values(change)
         self._reject_protected_target("tool", change.affected_tool_id, self.protected_tools)
-        self._reject_protected_target(
-            "capability", change.affected_capability_id, self.protected_capabilities
-        )
+        self._reject_protected_target("skill", change.affected_skill_id, self.protected_skills)
         self._reject_protected_target("policy", change.affected_policy_id, self.protected_policies)
         self._reject_protected_target(
             "permission boundary",
@@ -910,7 +980,7 @@ class ImprovementScope(ContractModel):
             self.protected_permission_boundaries,
         )
         self._reject_protected_targets("tool", targets, self.protected_tools)
-        self._reject_protected_targets("capability", targets, self.protected_capabilities)
+        self._reject_protected_targets("skill", targets, self.protected_skills)
         self._reject_protected_targets("policy", targets, self.protected_policies)
         self._reject_protected_targets(
             "permission boundary",
@@ -932,9 +1002,9 @@ class ImprovementScope(ContractModel):
             "tool", change.affected_tool_id, self.allowed_tools, change.change_kind
         )
         self._validate_allowed_target(
-            "capability",
-            change.affected_capability_id,
-            self.allowed_capabilities,
+            "skill",
+            change.affected_skill_id,
+            self.allowed_skills,
             change.change_kind,
         )
         self._validate_allowed_target(

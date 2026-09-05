@@ -128,7 +128,7 @@ class EvaluationFailure(ContractModel):
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     runtime_component: str = Field(default="unknown", min_length=1)
     affected_component: str | None = Field(default=None, min_length=1)
-    affected_capability: str | None = Field(default=None, min_length=1)
+    affected_skill: str | None = Field(default=None, min_length=1)
     affected_tool: str | None = Field(default=None, min_length=1)
     affected_policy: str | None = Field(default=None, min_length=1)
     affected_workflow: str | None = Field(default=None, min_length=1)
@@ -160,7 +160,7 @@ class FailureCluster(ContractModel):
     evaluator_id: str | None = None
     runtime_component: str | None = None
     affected_component: str | None = Field(default=None, min_length=1)
-    affected_capability: str | None = Field(default=None, min_length=1)
+    affected_skill: str | None = Field(default=None, min_length=1)
     affected_tool: str | None = Field(default=None, min_length=1)
     affected_policy: str | None = Field(default=None, min_length=1)
     affected_workflow: str | None = Field(default=None, min_length=1)

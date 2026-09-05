@@ -17,6 +17,7 @@ from enterprise_agent_improvement_lab.contracts.common import (
     require_aware_utc,
     utc_now,
 )
+from enterprise_agent_improvement_lab.contracts.experiments import ComponentChange
 
 
 class RiskClass(StrEnum):
@@ -194,6 +195,15 @@ class RiskAwarePromotionEvaluation(ContractModel):
     failed_evidence_ids: tuple[str, ...] = ()
     reviewer_roles: tuple[str, ...] = ()
     missing_reviewer_roles: tuple[str, ...] = ()
+    baseline_candidate_id: str | None = Field(default=None, min_length=1)
+    baseline_manifest_id: str | None = Field(default=None, min_length=1)
+    candidate_manifest_id: str | None = Field(default=None, min_length=1)
+    baseline_manifest_digest: str | None = Field(default=None, min_length=1)
+    candidate_manifest_digest: str | None = Field(default=None, min_length=1)
+    baseline_environment_snapshot_id: str | None = Field(default=None, min_length=1)
+    candidate_environment_snapshot_id: str | None = Field(default=None, min_length=1)
+    component_changes: tuple[ComponentChange, ...] = ()
+    component_change_refs: tuple[str, ...] = ()
     eligible: bool
     human_decision_required: bool = True
     created_at: datetime = Field(default_factory=utc_now)
@@ -208,11 +218,18 @@ class RiskAwarePromotionEvaluation(ContractModel):
             ("failed_evidence_ids", self.failed_evidence_ids),
             ("reviewer_roles", self.reviewer_roles),
             ("missing_reviewer_roles", self.missing_reviewer_roles),
+            ("component_change_refs", self.component_change_refs),
         ):
             if any(not value.strip() for value in values):
                 raise ValueError(f"{name} must contain non-empty values")
             if len(values) != len(set(values)):
                 raise ValueError(f"{name} must contain unique values")
+        component_keys = [
+            (change.component_type, change.component_id, change.relationship)
+            for change in self.component_changes
+        ]
+        if len(component_keys) != len(set(component_keys)):
+            raise ValueError("component changes must identify unique relationships")
         if self.eligible and (
             self.missing_evidence_ids or self.failed_evidence_ids or self.missing_reviewer_roles
         ):

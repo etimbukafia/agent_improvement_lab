@@ -23,8 +23,9 @@ NOW = datetime(2026, 8, 23, 12, 0, tzinfo=UTC)
 def _snapshot(**updates: object) -> EnvironmentSnapshot:
     values: dict[str, object] = {
         "agent_registry_version": "agent-registry-7",
+        "prompt_registry_version": "prompt-registry-3",
+        "skill_registry_version": "skill-registry-2",
         "tool_registry_version": "tool-registry-4",
-        "capability_registry_version": "capability-registry-2",
         "policy_registry_version": "policy-registry-5",
         "agent_definition_hash": sha256(b"agent-definition").hexdigest(),
         "tool_hashes": {"orders.read@1.0.0": sha256(b"tool").hexdigest()},

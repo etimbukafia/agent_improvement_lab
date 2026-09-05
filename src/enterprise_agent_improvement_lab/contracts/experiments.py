@@ -220,6 +220,14 @@ class RunManifest(ContractModel):
         ),
     )
     environment_snapshot: EnvironmentSnapshot | None = Field(default=None, exclude=True)
+    resolved_manifest_id: str | None = Field(default=None, min_length=1)
+    resolved_manifest_digest: str | None = Field(default=None, min_length=1)
+    registry_snapshot_id: str | None = Field(default=None, min_length=1)
+    agent_ref: str | None = Field(default=None, min_length=1)
+    prompt_ref: str | None = Field(default=None, min_length=1)
+    skill_refs: tuple[str, ...] = ()
+    tool_refs: tuple[str, ...] = ()
+    policy_refs: tuple[str, ...] = ()
     created_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -251,6 +259,13 @@ class RunManifest(ContractModel):
             raise ValueError("configuration_artifact_ids must contain unique IDs")
         if len(self.toolset) != len(set(self.toolset)):
             raise ValueError("toolset must contain unique IDs")
+        for name, values in (
+            ("skill_refs", self.skill_refs),
+            ("tool_refs", self.tool_refs),
+            ("policy_refs", self.policy_refs),
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError(f"{name} must contain unique references")
         if self.environment_snapshot is not None:
             if self.environment_snapshot_id != self.environment_snapshot.identity:
                 raise ValueError("environment_snapshot_id must match environment_snapshot")
@@ -335,6 +350,55 @@ class ComparisonMetric(ContractModel):
         return self.candidate_value - self.baseline_value
 
 
+class ComponentChange(ContractModel):
+    """One exact component identity difference between two evaluated builds."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        str_strip_whitespace=True,
+        validate_assignment=True,
+    )
+
+    component_type: str = Field(min_length=1)
+    component_id: str = Field(min_length=1)
+    baseline_ref: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("baseline_ref", "baseline", "before", "before_ref"),
+    )
+    candidate_ref: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("candidate_ref", "candidate", "after", "after_ref"),
+    )
+    relationship: str = Field(default="agent", min_length=1)
+
+    @property
+    def baseline(self) -> str | None:
+        """Return the baseline identity using the concise comparison name."""
+
+        return self.baseline_ref
+
+    @property
+    def candidate(self) -> str | None:
+        """Return the candidate identity using the concise comparison name."""
+
+        return self.candidate_ref
+
+    @property
+    def changed(self) -> bool:
+        """Return whether this component identity changed."""
+
+        return self.baseline_ref != self.candidate_ref
+
+    @property
+    def summary(self) -> str:
+        """Return a concise before-to-after component explanation."""
+
+        before = self.baseline_ref or "absent"
+        after = self.candidate_ref or "absent"
+        return f"{before} -> {after}"
+
+
 class BaselineComparison(ContractModel):
     """Saved comparison between two completed runs."""
 
@@ -375,6 +439,15 @@ class BaselineComparison(ContractModel):
     risk_weighted_regression_score: float = Field(default=0.0, ge=0.0)
     evaluator_family_aggregates: tuple[EvaluatorFamilyAggregate, ...] = ()
     environment_compatible: bool = True
+    baseline_candidate_id: str | None = Field(default=None, min_length=1)
+    candidate_candidate_id: str | None = Field(default=None, min_length=1)
+    baseline_manifest_id: str | None = Field(default=None, min_length=1)
+    candidate_manifest_id: str | None = Field(default=None, min_length=1)
+    baseline_manifest_digest: str | None = Field(default=None, min_length=1)
+    candidate_manifest_digest: str | None = Field(default=None, min_length=1)
+    baseline_environment_snapshot_id: str | None = Field(default=None, min_length=1)
+    candidate_environment_snapshot_id: str | None = Field(default=None, min_length=1)
+    component_changes: tuple[ComponentChange, ...] = ()
 
     @field_validator("risk_weighted_regression_score")
     @classmethod
@@ -426,6 +499,12 @@ class BaselineComparison(ContractModel):
             raise ValueError("Enterprise comparison metric IDs must be unique")
         if not self.environment_compatible and self.verdict == ComparisonVerdict.IMPROVED:
             raise ValueError("An incompatible environment cannot be improved")
+        component_keys = [
+            (change.component_type, change.component_id, change.relationship)
+            for change in self.component_changes
+        ]
+        if len(component_keys) != len(set(component_keys)):
+            raise ValueError("component changes must identify unique relationships")
         return self
 
     @property
@@ -566,6 +645,15 @@ class PromotionEvaluation(ContractModel):
     policy_id: str = Field(min_length=1)
     hard_gates: tuple[PromotionGateResult, ...] = ()
     soft_gates: tuple[PromotionGateResult, ...] = ()
+    baseline_candidate_id: str | None = Field(default=None, min_length=1)
+    baseline_manifest_id: str | None = Field(default=None, min_length=1)
+    candidate_manifest_id: str | None = Field(default=None, min_length=1)
+    baseline_manifest_digest: str | None = Field(default=None, min_length=1)
+    candidate_manifest_digest: str | None = Field(default=None, min_length=1)
+    baseline_environment_snapshot_id: str | None = Field(default=None, min_length=1)
+    candidate_environment_snapshot_id: str | None = Field(default=None, min_length=1)
+    component_changes: tuple[ComponentChange, ...] = ()
+    component_change_refs: tuple[str, ...] = ()
     eligible: bool
     created_at: datetime
 
@@ -575,6 +663,14 @@ class PromotionEvaluation(ContractModel):
         all_ids = [gate.gate_id for gate in (*self.hard_gates, *self.soft_gates)]
         if len(all_ids) != len(set(all_ids)):
             raise ValueError("Promotion gate IDs must be unique")
+        if len(self.component_change_refs) != len(set(self.component_change_refs)):
+            raise ValueError("component_change_refs must be unique")
+        component_keys = [
+            (change.component_type, change.component_id, change.relationship)
+            for change in self.component_changes
+        ]
+        if len(component_keys) != len(set(component_keys)):
+            raise ValueError("component changes must identify unique relationships")
         expected = all(gate.passed for gate in self.hard_gates)
         if self.eligible != expected:
             raise ValueError("eligible must match the hard gate results")
@@ -595,6 +691,17 @@ class PromotionDecision(ContractModel):
     previous_active_candidate_id: str | None = None
     rollback_of_decision_id: str | None = None
     restored_candidate_id: str | None = None
+    baseline_candidate_id: str | None = Field(default=None, min_length=1)
+    baseline_manifest_id: str | None = Field(default=None, min_length=1)
+    candidate_manifest_id: str | None = Field(default=None, min_length=1)
+    baseline_manifest_digest: str | None = Field(default=None, min_length=1)
+    candidate_manifest_digest: str | None = Field(default=None, min_length=1)
+    baseline_environment_snapshot_id: str | None = Field(default=None, min_length=1)
+    candidate_environment_snapshot_id: str | None = Field(default=None, min_length=1)
+    component_changes: tuple[ComponentChange, ...] = ()
+    evaluation_evidence_refs: tuple[str, ...] = ()
+    regression_evidence_refs: tuple[str, ...] = ()
+    risk_evidence_refs: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def validate_decision(self) -> "PromotionDecision":
@@ -607,6 +714,19 @@ class PromotionDecision(ContractModel):
             raise ValueError("rollback_of_decision_id is only allowed for a rollback")
         if self.outcome != PromotionOutcome.ROLLBACK and self.restored_candidate_id is not None:
             raise ValueError("restored_candidate_id is only allowed for a rollback")
+        for name, values in (
+            ("evaluation_evidence_refs", self.evaluation_evidence_refs),
+            ("regression_evidence_refs", self.regression_evidence_refs),
+            ("risk_evidence_refs", self.risk_evidence_refs),
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError(f"{name} must contain unique references")
+        component_keys = [
+            (change.component_type, change.component_id, change.relationship)
+            for change in self.component_changes
+        ]
+        if len(component_keys) != len(set(component_keys)):
+            raise ValueError("component changes must identify unique relationships")
         return self
 
 

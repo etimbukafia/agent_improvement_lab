@@ -64,6 +64,7 @@ def run_cycle(output_dir: Path) -> dict[str, object]:
         version="1.0.0",
         kind=CandidateArtifactKind.SYSTEM_PROMPT,
         content="Answer arithmetic expressions directly.",
+        registry_reference="prompt:calculator-prompt@1.0.0",
         created_at=CREATED_AT,
     )
     baseline = EnterpriseAgentCandidate(
@@ -72,13 +73,16 @@ def run_cycle(output_dir: Path) -> dict[str, object]:
         name="calculator-baseline",
         version="1.0.0",
         artifacts=(baseline_artifact.to_reference(),),
+        prompt_ref=baseline_artifact.to_reference(),
         tools=("calculator",),
         tool_bindings=("calculator-binding@1.0.0",),
         rationale="Initial deterministic calculator behavior.",
         created_at=CREATED_AT,
         metadata={"calculator_mode": "direct"},
     )
-    baseline_manifest = _manifest("calculator-baseline-run", baseline)
+    baseline_manifest = _manifest(
+        "calculator-baseline-run", baseline, prompt_artifact=baseline_artifact
+    )
     evaluators = (
         *default_enterprise_evaluators(),
         ToolSelectionAccuracy(),
@@ -147,13 +151,24 @@ def run_cycle(output_dir: Path) -> dict[str, object]:
             store.candidate_artifacts.save(artifact)
         store.enterprise_candidates.save(candidate)
 
-        candidate_manifest = _manifest("calculator-candidate-run", candidate)
+        candidate_prompt_artifact = next(
+            artifact
+            for artifact in built.artifacts
+            if artifact.kind is CandidateArtifactKind.SYSTEM_PROMPT
+        )
+        candidate_manifest = _manifest(
+            "calculator-candidate-run", candidate, prompt_artifact=candidate_prompt_artifact
+        )
         candidate_result = runner.run_sync(dataset, candidate, candidate_manifest)
         comparison = compare_enterprise_reports(
             baseline_result.report,
             candidate_result.report,
             baseline_snapshot=baseline_manifest.environment_snapshot,
             candidate_snapshot=candidate_manifest.environment_snapshot,
+            baseline_candidate=baseline,
+            candidate_candidate=candidate,
+            baseline_manifest=baseline_manifest,
+            candidate_manifest=candidate_manifest,
             target_failure_ids=(target.failure_id,),
             created_at=CREATED_AT,
         )
@@ -190,13 +205,26 @@ def run_cycle(output_dir: Path) -> dict[str, object]:
         return summary
 
 
-def _manifest(run_id: str, candidate: EnterpriseAgentCandidate) -> RunManifest:
+def _manifest(
+    run_id: str,
+    candidate: EnterpriseAgentCandidate,
+    *,
+    prompt_artifact: CandidateArtifact,
+) -> RunManifest:
     snapshot = EnvironmentSnapshot(
         agent_registry_version="calculator-registry-1",
+        prompt_registry_version="calculator-prompt-registry-1",
+        skill_registry_version="calculator-skill-registry-1",
         tool_registry_version="calculator-tool-registry-1",
-        capability_registry_version="calculator-capability-registry-1",
         policy_registry_version="calculator-policy-registry-1",
         agent_definition_hash=sha256(b"calculator-agent-definition").hexdigest(),
+        prompt_hashes=(
+            SnapshotComponentHash(
+                component_id=prompt_artifact.artifact_id,
+                version=prompt_artifact.version,
+                sha256=sha256(prompt_artifact.content.encode("utf-8")).hexdigest(),
+            ),
+        ),
         tool_hashes=(
             SnapshotComponentHash(
                 component_id="calculator",
@@ -227,6 +255,18 @@ def _manifest(run_id: str, candidate: EnterpriseAgentCandidate) -> RunManifest:
         model="none",
         seed=0,
         environment_snapshot=snapshot,
+        prompt_ref=(
+            candidate.prompt_ref.registry_reference
+            if candidate.prompt_ref is not None
+            and candidate.prompt_ref.registry_reference is not None
+            else (
+                f"prompt:{prompt_artifact.artifact_id}@{prompt_artifact.version}"
+                if candidate.prompt_ref is not None
+                else None
+            )
+        ),
+        skill_refs=(),
+        tool_refs=tuple(f"tool:{tool}@1.0.0" for tool in candidate.tools),
         created_at=CREATED_AT,
         metadata={"example": "calculator-agent"},
     )

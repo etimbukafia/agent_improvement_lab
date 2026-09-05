@@ -46,8 +46,9 @@ def _metric(
 def _snapshot(runtime_version: str = "1.0.0") -> EnvironmentSnapshot:
     return EnvironmentSnapshot(
         agent_registry_version="agents-1",
+        prompt_registry_version="prompts-1",
+        skill_registry_version="skills-1",
         tool_registry_version="tools-1",
-        capability_registry_version="capabilities-1",
         policy_registry_version="policies-1",
         agent_definition_hash=sha256(b"agent").hexdigest(),
         runtime_name="test-runtime",

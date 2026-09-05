@@ -47,8 +47,8 @@ class ImprovementDecision(StrEnum):
     MEMORY_CHANGE = ChangeKind.MEMORY_CHANGE.value
     THRESHOLD_CHANGE = ChangeKind.THRESHOLD_CHANGE.value
     WORKFLOW_CHANGE = ChangeKind.WORKFLOW_CHANGE.value
-    CAPABILITY_ADDITION = ChangeKind.CAPABILITY_ADDITION.value
-    CAPABILITY_REMOVAL = ChangeKind.CAPABILITY_REMOVAL.value
+    SKILL_ADDITION = ChangeKind.SKILL_ADDITION.value
+    SKILL_REMOVAL = ChangeKind.SKILL_REMOVAL.value
     APPROVAL_RULE_CHANGE = ChangeKind.APPROVAL_RULE_CHANGE.value
     HUMAN_REVIEW_REQUIRED = "human_review_required"
 
@@ -76,7 +76,7 @@ class RootCauseHypothesis(ContractModel):
     )
     affected_agent_id: str | None = Field(default=None, min_length=1)
     affected_component: str | None = Field(default=None, min_length=1)
-    affected_capability: str | None = Field(default=None, min_length=1)
+    affected_skill: str | None = Field(default=None, min_length=1)
     affected_tool: str | None = Field(default=None, min_length=1)
     affected_policy: str | None = Field(default=None, min_length=1)
     affected_workflow: str | None = Field(default=None, min_length=1)

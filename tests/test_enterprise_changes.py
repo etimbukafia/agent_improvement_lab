@@ -49,7 +49,7 @@ def _change(
     affected_agent_id: str = "agent-1",
     affected_artifact_id: str | None = None,
     affected_tool_id: str | None = None,
-    affected_capability_id: str | None = None,
+    affected_skill_id: str | None = None,
     affected_policy_id: str | None = None,
     before_reference: CandidateArtifactReference | None = None,
     after_reference: CandidateArtifactReference | None = None,
@@ -63,7 +63,7 @@ def _change(
         affected_agent_id=affected_agent_id,
         affected_artifact_id=affected_artifact_id,
         affected_tool_id=affected_tool_id,
-        affected_capability_id=affected_capability_id,
+        affected_skill_id=affected_skill_id,
         affected_policy_id=affected_policy_id,
         before_reference=before_reference,
         after_reference=after_reference,
@@ -185,20 +185,20 @@ def _kind_change(kind: ChangeKind) -> EnterpriseCandidateChange:
             ),
             changed_paths=("$.transitions",),
         )
-    if kind == ChangeKind.CAPABILITY_ADDITION:
+    if kind == ChangeKind.SKILL_ADDITION:
         return _change(
             kind,
-            affected_capability_id="capability-new",
+            affected_skill_id="skill-new",
             after_reference=_reference(
-                "capability-config-new", CandidateArtifactKind.CAPABILITY_CONFIGURATION
+                "skill-config-new", CandidateArtifactKind.SKILL_CONFIGURATION
             ),
         )
-    if kind == ChangeKind.CAPABILITY_REMOVAL:
+    if kind == ChangeKind.SKILL_REMOVAL:
         return _change(
             kind,
-            affected_capability_id="capability-old",
+            affected_skill_id="skill-old",
             before_reference=_reference(
-                "capability-config-old", CandidateArtifactKind.CAPABILITY_CONFIGURATION
+                "skill-config-old", CandidateArtifactKind.SKILL_CONFIGURATION
             ),
         )
     return _change(

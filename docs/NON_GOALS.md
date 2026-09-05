@@ -20,7 +20,9 @@ Do not build these before the core enterprise improvement loop works.
 - model fine-tuning;
 - reinforcement learning;
 - owning production runtime execution;
-- replacing Enterprise Agent Harness;
+- replacing [Enterprise Agent Harness](https://github.com/etimbukafia/enterprise-agent-harness);
+- owning Harness prompt, skill, tool, policy, permission, approval, or runtime
+  authority;
 - business opportunity discovery;
 - unrestricted self-modification;
 - copying raw enterprise data into the Lab when references or safe summaries are enough.

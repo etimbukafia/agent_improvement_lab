@@ -300,6 +300,10 @@ def _compare_experiments(args: Any) -> dict[str, Any]:
         candidate_result.report,
         baseline_snapshot=baseline_manifest.environment_snapshot,
         candidate_snapshot=candidate_manifest.environment_snapshot,
+        baseline_candidate=baseline,
+        candidate_candidate=candidate,
+        baseline_manifest=baseline_manifest,
+        candidate_manifest=candidate_manifest,
         target_failure_ids=target_failure_ids,
         target_cluster_id=args.target_cluster_id,
     )

@@ -39,6 +39,22 @@ by its `RunManifest`. The Harness integration collects Harness-specific
 registry and runtime identity and translates it at the boundary; the Lab core
 does not import Harness code.
 
+## Enterprise Agent Harness artifact boundary
+
+The optional adapter targets the current [Enterprise Agent Harness](https://github.com/etimbukafia/enterprise-agent-harness)
+public contracts. It translates a Lab candidate into an `AgentConfig` with
+one exact `prompt_ref`, separate `skill_refs`, explicit executable `tool_refs`,
+and `policy_refs`. Lab `SYSTEM_PROMPT`, `DEVELOPER_PROMPT`, and `USER_TEMPLATE`
+artifacts can materialize an immutable Harness `PromptDefinition`. A
+`SKILL_CONFIGURATION` artifact can materialize an immutable `SkillDefinition`.
+
+Skill tool dependencies describe discovery only. They do not grant execution
+authority. The candidate must list every executable tool explicitly.
+
+After a factory build, the adapter records the Harness `ResolvedAgentManifest`
+ID, digest, registry snapshot ID, and exact component references. The manifest
+describes what Harness built; the Lab candidate describes what the Lab proposed.
+
 ## Run an adapter
 
 Pass a runtime object or zero-argument runtime factory as `module:attribute`.

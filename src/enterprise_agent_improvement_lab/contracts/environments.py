@@ -136,10 +136,13 @@ class EnvironmentSnapshot(ContractModel):
         validation_alias=AliasChoices("snapshot_sha256", "checksum", "identity_sha256"),
     )
     agent_registry_version: str = Field(min_length=1)
+    prompt_registry_version: str = Field(min_length=1)
+    skill_registry_version: str = Field(min_length=1)
     tool_registry_version: str = Field(min_length=1)
-    capability_registry_version: str = Field(min_length=1)
     policy_registry_version: str = Field(min_length=1)
     agent_definition_hash: str = Field(pattern=_SHA256_PATTERN)
+    prompt_hashes: tuple[SnapshotComponentHash, ...] = Field(default=())
+    skill_hashes: tuple[SnapshotComponentHash, ...] = Field(default=())
     tool_hashes: tuple[SnapshotComponentHash, ...] = Field(
         default=(),
         validation_alias=AliasChoices("tool_hashes", "tool_definition_hashes"),
@@ -169,12 +172,25 @@ class EnvironmentSnapshot(ContractModel):
         default=(),
         validation_alias=AliasChoices("metadata", "safe_metadata"),
     )
+    # These values are safe exact provenance.  They identify the resolved
+    # Harness build without copying complete registry records into the Lab.
+    registry_snapshot_id: str | None = Field(default=None, min_length=1)
+    resolved_manifest_id: str | None = Field(default=None, min_length=1)
+    # Preserve the exact Harness digest; the runtime, not the Lab, defines its
+    # algorithm and textual representation.
+    resolved_manifest_digest: str | None = Field(default=None, min_length=1)
+    agent_ref: str | None = Field(default=None, min_length=1)
+    prompt_ref: str | None = Field(default=None, min_length=1)
+    skill_refs: tuple[str, ...] = ()
+    tool_refs: tuple[str, ...] = ()
+    policy_refs: tuple[str, ...] = ()
     captured_at: datetime = Field(default_factory=utc_now)
 
     @field_validator(
         "agent_registry_version",
+        "prompt_registry_version",
+        "skill_registry_version",
         "tool_registry_version",
-        "capability_registry_version",
         "policy_registry_version",
         mode="before",
     )
@@ -200,7 +216,7 @@ class EnvironmentSnapshot(ContractModel):
             return f"ref:{sha256(stable_json_dumps(safe).encode('utf-8')).hexdigest()}"
         return str(value)
 
-    @field_validator("tool_hashes", "policy_hashes", mode="before")
+    @field_validator("prompt_hashes", "skill_hashes", "tool_hashes", "policy_hashes", mode="before")
     @classmethod
     def normalize_component_hashes(cls, value: object) -> tuple[SnapshotComponentHash, ...]:
         if value is None:
@@ -285,6 +301,13 @@ class EnvironmentSnapshot(ContractModel):
 
     @model_validator(mode="after")
     def validate_identity(self) -> "EnvironmentSnapshot":
+        for name, values in (
+            ("skill_refs", self.skill_refs),
+            ("tool_refs", self.tool_refs),
+            ("policy_refs", self.policy_refs),
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError(f"{name} must contain unique references")
         digest = self._identity_digest()
         if self.snapshot_sha256 is not None and self.snapshot_sha256 != digest:
             raise ValueError("snapshot_sha256 does not match snapshot contents")
@@ -350,6 +373,18 @@ class EnvironmentSnapshot(ContractModel):
         return self.tool_hashes
 
     @property
+    def prompt_definition_hashes(self) -> tuple[SnapshotComponentHash, ...]:
+        """Return prompt hashes using the descriptive field name."""
+
+        return self.prompt_hashes
+
+    @property
+    def skill_definition_hashes(self) -> tuple[SnapshotComponentHash, ...]:
+        """Return skill hashes using the descriptive field name."""
+
+        return self.skill_hashes
+
+    @property
     def policy_definition_hashes(self) -> tuple[SnapshotComponentHash, ...]:
         """Return policy hashes using the descriptive field name."""
 
@@ -366,12 +401,32 @@ class EnvironmentSnapshot(ContractModel):
         """Return the identity of the shared execution environment.
 
         Agent definition hashes are excluded because a baseline and candidate
-        normally use different agent definitions. Registry, tool, policy, and
-        runtime state remain part of this identity.
+        normally use different agent definitions. Prompt and skill registry
+        state is also candidate-controlled during bounded materialization.
+        Harness build and registry snapshot identifiers are preserved on the
+        full snapshot but are excluded here because they identify the build
+        graph, not the shared execution environment. Tool, policy, fixture,
+        provider, and runtime state remain part of this identity.
         """
 
         payload = self._identity_payload()
-        payload.pop("agent_definition_hash", None)
+        for field in (
+            "agent_registry_version",
+            "prompt_registry_version",
+            "skill_registry_version",
+            "agent_definition_hash",
+            "prompt_hashes",
+            "skill_hashes",
+            "registry_snapshot_id",
+            "resolved_manifest_id",
+            "resolved_manifest_digest",
+            "agent_ref",
+            "prompt_ref",
+            "skill_refs",
+            "tool_refs",
+            "policy_refs",
+        ):
+            payload.pop(field, None)
         digest = sha256(stable_json_dumps(payload).encode("utf-8")).hexdigest()
         return f"environment-compatible-{digest}"
 
@@ -410,8 +465,9 @@ class EnvironmentSnapshot(ContractModel):
         )
         return cls(
             agent_registry_version="legacy",
+            prompt_registry_version="legacy",
+            skill_registry_version="legacy",
             tool_registry_version="legacy",
-            capability_registry_version="legacy",
             policy_registry_version="legacy",
             agent_definition_hash=sha256(b"legacy-agent-definition").hexdigest(),
             tool_hashes=tool_hashes,

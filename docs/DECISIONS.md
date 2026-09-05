@@ -141,7 +141,7 @@ Scopes that are too strict can block useful improvements.
 
 ---
 
-## Decision 8 — Keep Enterprise Agent Harness as an integration
+## Decision 8 — Keep [Enterprise Agent Harness](https://github.com/etimbukafia/enterprise-agent-harness) as an integration
 
 ### Context
 Enterprise Agent Harness is the expected main runtime.
@@ -317,3 +317,26 @@ The final package name reflects the completed architecture transition.
 
 ### Risks
 Migration documentation must clearly distinguish removed and canonical APIs.
+
+---
+
+## Decision 17 — Use the Harness Prompt/Skill artifact model
+
+### Context
+The current [Enterprise Agent Harness](https://github.com/etimbukafia/enterprise-agent-harness)
+uses separate immutable `PromptDefinition`, `SkillDefinition`, tool, policy, and
+agent references. The Lab previously used Capability terminology in some
+candidate and snapshot contracts.
+
+### Decision
+Use `skills`, `SKILL_CONFIGURATION`, and `SKILL_ADDITION`/`SKILL_REMOVAL` in
+active Lab contracts. Keep evaluation prompt artifacts in the Lab and let the
+Harness adapter materialize exact prompt and skill definitions. Keep skill
+dependencies separate from executable tool authority.
+
+### Consequences
+Candidate intent, resolved Harness manifests, and traces can identify prompt,
+skill, tool, and policy versions without making the Lab a runtime.
+
+### Risks
+The adapter must reject incomplete or conflicting component provenance.

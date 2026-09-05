@@ -74,3 +74,16 @@ See `API_MIGRATION.md` for removed API names and their replacements.
 8. System-level evaluation.
 
 These areas now use the enterprise architecture as the implementation surface.
+
+## Harness artifact vocabulary
+
+| Previous active term | Current term | Boundary |
+| --- | --- | --- |
+| `CAPABILITY_CONFIGURATION` | `SKILL_CONFIGURATION` | Lab candidate artifact |
+| `CAPABILITY_ADDITION` / `CAPABILITY_REMOVAL` | `SKILL_ADDITION` / `SKILL_REMOVAL` | Lab change kind |
+| `capabilities` | `skills` | Lab candidate intent |
+| `AgentConfig.capabilities` | `AgentConfig.skill_refs` | Harness adapter |
+| prompt text in metadata | `PromptDefinition` + `prompt_ref` | Harness adapter |
+
+The migration is forward-only. The old Capability model is not an active
+compatibility layer.

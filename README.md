@@ -4,7 +4,7 @@ Enterprise Agent Improvement Lab evaluates enterprise AI agents, diagnoses failu
 
 The Lab is library-first and provider-neutral. Agent runtimes connect through small adapter boundaries. The Lab owns evaluation contracts, evidence, failure analysis, controlled improvement logic, comparison, and promotion records.
 
-The Lab does not deploy agents or enforce production runtime policy. Those responsibilities stay with the runtime, such as Enterprise Agent Harness.
+The Lab does not deploy agents or enforce production runtime policy. Those responsibilities stay with the runtime, such as [Enterprise Agent Harness](https://github.com/etimbukafia/enterprise-agent-harness).
 
 ## What it does
 
@@ -14,7 +14,7 @@ The Lab does not deploy agents or enforce production runtime policy. Those respo
 - mines failures and groups them into reviewable failure clusters;
 - creates evidence-backed root-cause hypotheses;
 - plans bounded improvements within explicit improvement scopes;
-- builds typed candidate changes for prompts, tools, policies, routing, models, workflows, capabilities, approvals, and related configuration;
+- builds typed candidate changes for prompts, skills, tools, policies, routing, models, workflows, approvals, and related configuration;
 - compares candidates with baselines across quality, safety, authorization, state integrity, workflow, reliability, cost, and business outcomes;
 - applies risk-aware promotion gates while keeping the final promotion decision human-controlled;
 - supports offline, replay, shadow, and controlled canary evaluation evidence;
@@ -54,7 +54,7 @@ Human decision
 
 The Lab core does not import an agent framework or own production execution.
 
-Applications can implement `EnterpriseRuntime` directly or use an integration adapter. Enterprise Agent Harness remains outside the Lab core and can provide runtime, registry, approval, policy, tool, and execution evidence through that boundary.
+Applications can implement `EnterpriseRuntime` directly or use an integration adapter. [Enterprise Agent Harness](https://github.com/etimbukafia/enterprise-agent-harness) remains outside the Lab core and can provide governed runtime, prompt, skill, registry, approval, policy, tool, and execution evidence through that boundary.
 
 See `docs/INTEGRATION_GUIDE.md` for the runtime integration model.
 

@@ -190,8 +190,8 @@ class BoundedCandidateBuilder(ABC):
                     }
                 )
                 and not (
-                    self.default_change_kind == ChangeKind.CAPABILITY_ADDITION
-                    and expected_kind == ChangeKind.CAPABILITY_REMOVAL
+                    self.default_change_kind == ChangeKind.SKILL_ADDITION
+                    and expected_kind == ChangeKind.SKILL_REMOVAL
                 )
             ):
                 raise CandidateBuilderError(f"{self.builder_id} cannot build {plan.decision.value}")
@@ -231,14 +231,20 @@ class BoundedCandidateBuilder(ABC):
                 )
             if base_artifact.artifact_id not in artifact_map:
                 artifact_map[base_artifact.artifact_id] = base_artifact
-            if change_kind not in {
-                ChangeKind.TOOL_ADDITION,
-                ChangeKind.CAPABILITY_ADDITION,
-            } and not _parent_has_reference(parent_refs, base_artifact.artifact_id):
+            parent_reference = _parent_reference(parent_refs, base_artifact.artifact_id)
+            if parent_reference is None and target_id is not None:
+                parent_reference = _parent_reference_for_target(parent_refs, target_id)
+            if (
+                change_kind
+                not in {
+                    ChangeKind.TOOL_ADDITION,
+                    ChangeKind.SKILL_ADDITION,
+                }
+                and parent_reference is None
+            ):
                 raise CandidateBuilderError(
                     f"Base artifact {base_artifact.artifact_id!r} is not referenced by the parent"
                 )
-            parent_reference = _parent_reference(parent_refs, base_artifact.artifact_id)
             if parent_reference is not None and (
                 (
                     parent_reference.version is not None
@@ -262,9 +268,34 @@ class BoundedCandidateBuilder(ABC):
                     "its parent reference"
                 )
 
+        # A parent candidate may carry only an immutable reference while the
+        # caller supplies the replacement definition separately. Preserve that
+        # pinned before identity so replacements remain reviewable without a
+        # loaded artifact body.
+        parent_target_reference = (
+            _parent_reference_for_target(parent_refs, target_id) if target_id else None
+        )
+
         replacement = self._replacement_artifact(
             request, target_id, change_kind, base_artifact, created_at
         )
+        if (
+            replacement is not None
+            and replacement.registry_reference is None
+            and parent_target_reference is not None
+            and parent_target_reference.registry_reference is not None
+        ):
+            # The parent may intentionally be represented only by an
+            # immutable reference. Preserve that exact component identity
+            # while pinning a replacement to its new version.
+            replacement = replacement.model_copy(
+                update={
+                    "registry_reference": _registry_reference_for_version(
+                        parent_target_reference.registry_reference,
+                        replacement.version,
+                    )
+                }
+            )
         if replacement is not None:
             existing = artifact_map.get(replacement.artifact_id)
             if (
@@ -278,14 +309,38 @@ class BoundedCandidateBuilder(ABC):
                 )
             artifact_map[replacement.artifact_id] = replacement
 
+        if (
+            change_kind == ChangeKind.PROMPT_CHANGE
+            and replacement is not None
+            and parent_target_reference is not None
+            and parent_target_reference.version is not None
+            and _version_key(replacement.version) == _version_key(parent_target_reference.version)
+        ):
+            raise CandidateBuilderError("Prompt changes require a new prompt version")
+
+        base_reference = base_artifact.to_reference() if base_artifact is not None else None
+        if (
+            base_reference is not None
+            and parent_target_reference is not None
+            and parent_target_reference.artifact_id != base_reference.artifact_id
+        ):
+            # Keep the immutable parent identity when a loaded artifact body
+            # is keyed by a different Lab artifact ID but the same exact
+            # component registry reference.
+            base_reference = parent_target_reference
         before_reference = (
-            base_artifact.to_reference()
-            if base_artifact is not None
-            and change_kind not in {ChangeKind.TOOL_ADDITION, ChangeKind.CAPABILITY_ADDITION}
-            else None
+            base_reference
+            if base_reference is not None
+            and change_kind not in {ChangeKind.TOOL_ADDITION, ChangeKind.SKILL_ADDITION}
+            else (
+                parent_target_reference
+                if parent_target_reference is not None
+                and change_kind not in {ChangeKind.TOOL_ADDITION, ChangeKind.SKILL_ADDITION}
+                else None
+            )
         )
         after_reference = replacement.to_reference() if replacement is not None else None
-        if change_kind in {ChangeKind.TOOL_REMOVAL, ChangeKind.CAPABILITY_REMOVAL}:
+        if change_kind in {ChangeKind.TOOL_REMOVAL, ChangeKind.SKILL_REMOVAL}:
             after_reference = None
 
         resolved_target_id = target_id or (
@@ -299,7 +354,7 @@ class BoundedCandidateBuilder(ABC):
             else None
         )
         affected_tool_id = _tool_target(change_kind, resolved_target_id)
-        affected_capability_id = _capability_target(change_kind, resolved_target_id)
+        affected_skill_id = _skill_target(change_kind, resolved_target_id)
         affected_policy_id = _policy_target(change_kind, resolved_target_id)
         change = EnterpriseCandidateChange(
             change_id=request.change_id
@@ -308,7 +363,7 @@ class BoundedCandidateBuilder(ABC):
             affected_agent_id=request.parent_candidate.agent_id,
             affected_artifact_id=affected_artifact_id,
             affected_tool_id=affected_tool_id,
-            affected_capability_id=affected_capability_id,
+            affected_skill_id=affected_skill_id,
             affected_policy_id=affected_policy_id,
             before_reference=before_reference,
             after_reference=after_reference,
@@ -370,14 +425,31 @@ class BoundedCandidateBuilder(ABC):
         base_artifact: CandidateArtifact | None,
         created_at: datetime,
     ) -> CandidateArtifact | None:
-        if change_kind in {ChangeKind.TOOL_REMOVAL, ChangeKind.CAPABILITY_REMOVAL}:
+        if change_kind in {ChangeKind.TOOL_REMOVAL, ChangeKind.SKILL_REMOVAL}:
             if request.after_artifact is not None or request.replacement_content is not None:
                 raise CandidateBuilderError(f"{change_kind.value} cannot add an artifact")
             return None
         if request.after_artifact is not None:
             if request.replacement_content is not None:
                 raise CandidateBuilderError("after_artifact and replacement_content are exclusive")
-            registry_reference = _request_registry_reference(request)
+            if (
+                change_kind == ChangeKind.PROMPT_CHANGE
+                and base_artifact is not None
+                and _version_key(request.after_artifact.version)
+                == _version_key(base_artifact.version)
+            ):
+                raise CandidateBuilderError("Prompt changes require a new prompt version")
+            inherited_registry_reference = (
+                _registry_reference_for_version(
+                    base_artifact.registry_reference,
+                    request.after_artifact.version,
+                )
+                if base_artifact is not None and base_artifact.registry_reference is not None
+                else None
+            )
+            registry_reference = (
+                _request_registry_reference(request) or inherited_registry_reference
+            )
             if registry_reference is not None:
                 if (
                     request.after_artifact.registry_reference is not None
@@ -390,13 +462,24 @@ class BoundedCandidateBuilder(ABC):
                     return request.after_artifact.model_copy(
                         update={"registry_reference": registry_reference}
                     )
+            elif (
+                base_artifact is not None
+                and base_artifact.registry_reference is not None
+                and request.after_artifact.registry_reference is None
+            ):
+                return request.after_artifact.model_copy(
+                    update={"registry_reference": inherited_registry_reference}
+                )
             return request.after_artifact
         content = request.replacement_content
         if content is None:
-            if change_kind in {ChangeKind.TOOL_ADDITION, ChangeKind.CAPABILITY_ADDITION}:
+            if change_kind in {ChangeKind.TOOL_ADDITION, ChangeKind.SKILL_ADDITION}:
+                identity_field = (
+                    "skill_id" if change_kind == ChangeKind.SKILL_ADDITION else "tool_id"
+                )
                 content = stable_json_dumps(
                     {
-                        "component_id": target_id,
+                        identity_field: target_id,
                         "registry_reference": _request_registry_reference(request),
                     }
                 )
@@ -415,8 +498,16 @@ class BoundedCandidateBuilder(ABC):
         version = request.target_version
         if base_artifact is not None and request.target_version == "1.0.0":
             version = _next_version(base_artifact.version)
+        if (
+            change_kind == ChangeKind.PROMPT_CHANGE
+            and base_artifact is not None
+            and _version_key(version) == _version_key(base_artifact.version)
+        ):
+            raise CandidateBuilderError("Prompt changes require a new prompt version")
         registry_reference = _request_registry_reference(request) or (
-            base_artifact.registry_reference if base_artifact is not None else None
+            _registry_reference_for_version(base_artifact.registry_reference, version)
+            if base_artifact is not None
+            else None
         )
         artifact_id = request.artifact_id or _generated_artifact_id(
             request.parent_candidate,
@@ -528,11 +619,11 @@ class ApprovalRuleCandidateBuilder(BoundedCandidateBuilder):
     allowed_artifact_kinds = frozenset({CandidateArtifactKind.APPROVAL_POLICY})
 
 
-class CapabilityCandidateBuilder(BoundedCandidateBuilder):
-    builder_id = "CapabilityCandidateBuilder"
-    default_change_kind = ChangeKind.CAPABILITY_ADDITION
-    default_artifact_kind = CandidateArtifactKind.CAPABILITY_CONFIGURATION
-    allowed_artifact_kinds = frozenset({CandidateArtifactKind.CAPABILITY_CONFIGURATION})
+class SkillCandidateBuilder(BoundedCandidateBuilder):
+    builder_id = "SkillCandidateBuilder"
+    default_change_kind = ChangeKind.SKILL_ADDITION
+    default_artifact_kind = CandidateArtifactKind.SKILL_CONFIGURATION
+    allowed_artifact_kinds = frozenset({CandidateArtifactKind.SKILL_CONFIGURATION})
 
 
 _BUILDER_TYPES: dict[str, type[BoundedCandidateBuilder]] = {
@@ -546,7 +637,7 @@ _BUILDER_TYPES: dict[str, type[BoundedCandidateBuilder]] = {
         WorkflowCandidateBuilder,
         ThresholdCandidateBuilder,
         ApprovalRuleCandidateBuilder,
-        CapabilityCandidateBuilder,
+        SkillCandidateBuilder,
     )
 }
 
@@ -612,13 +703,13 @@ def _validate_request(builder: BoundedCandidateBuilder, request: CandidateBuildR
                 "tool",
                 target_id,
             )
-    if change_kind == ChangeKind.CAPABILITY_ADDITION:
+    if change_kind == ChangeKind.SKILL_ADDITION:
         if not target_id:
-            raise CandidateBuilderError("Capability additions need an affected capability ID")
+            raise CandidateBuilderError("Skill additions need an affected skill ID")
         _validate_registry_reference(
             _request_registry_reference(request)
             or _artifact_registry_reference(request.after_artifact),
-            "capability",
+            "skill",
             target_id,
         )
     if request.change_kind is not None:
@@ -635,9 +726,9 @@ def _validate_request(builder: BoundedCandidateBuilder, request: CandidateBuildR
             }
             if builder.default_change_kind == ChangeKind.POLICY_CHANGE
             else {
-                ChangeKind.CAPABILITY_REMOVAL,
+                ChangeKind.SKILL_REMOVAL,
             }
-            if builder.default_change_kind == ChangeKind.CAPABILITY_ADDITION
+            if builder.default_change_kind == ChangeKind.SKILL_ADDITION
             else set()
         )
         if request.change_kind in compatible_change_kinds:
@@ -680,7 +771,7 @@ def _artifact_kind_for_request(
         ChangeKind.APPROVAL_RULE_CHANGE: CandidateArtifactKind.APPROVAL_POLICY,
         ChangeKind.MODEL_CHANGE: CandidateArtifactKind.MODEL_CONFIGURATION,
         ChangeKind.WORKFLOW_CHANGE: CandidateArtifactKind.WORKFLOW_CONFIGURATION,
-        ChangeKind.CAPABILITY_ADDITION: CandidateArtifactKind.CAPABILITY_CONFIGURATION,
+        ChangeKind.SKILL_ADDITION: CandidateArtifactKind.SKILL_CONFIGURATION,
     }.get(change_kind, builder.default_artifact_kind)
 
 
@@ -690,6 +781,17 @@ def _artifact_registry_reference(artifact: CandidateArtifact | None) -> str | No
 
 def _request_registry_reference(request: CandidateBuildRequest) -> str | None:
     return request.target_registry_reference or request.registry_reference
+
+
+def _registry_reference_for_version(reference: str | None, version: str) -> str | None:
+    """Pin an inherited component reference to the replacement version."""
+
+    if reference is None:
+        return None
+    prefix, separator, _ = reference.rpartition("@")
+    if not separator or not prefix:
+        return reference
+    return f"{prefix}@{version}"
 
 
 def _validate_registry_reference(
@@ -746,8 +848,9 @@ def _reference_matches_target(reference: CandidateArtifactReference, target_id: 
         reference.registry_reference is not None
         and (
             reference.registry_reference == target_id
+            or reference.registry_reference.startswith(f"prompt:{target_id}@")
             or reference.registry_reference.startswith(f"tool:{target_id}@")
-            or reference.registry_reference.startswith(f"capability:{target_id}@")
+            or reference.registry_reference.startswith(f"skill:{target_id}@")
             or reference.registry_reference.startswith(f"policy:{target_id}@")
         )
     )
@@ -768,6 +871,17 @@ def _parent_reference(
     )
 
 
+def _parent_reference_for_target(
+    references: Sequence[CandidateArtifactReference], target_id: str
+) -> CandidateArtifactReference | None:
+    """Find a parent reference by artifact ID or exact component identity."""
+
+    return next(
+        (reference for reference in references if _reference_matches_target(reference, target_id)),
+        None,
+    )
+
+
 def _target_from_artifact(artifact: CandidateArtifact | None) -> str | None:
     if artifact is None:
         return None
@@ -778,7 +892,7 @@ def _target_from_artifact(artifact: CandidateArtifact | None) -> str | None:
 
 
 def _replacement_target(change_kind: ChangeKind) -> bool:
-    return change_kind not in {ChangeKind.TOOL_REMOVAL, ChangeKind.CAPABILITY_REMOVAL}
+    return change_kind not in {ChangeKind.TOOL_REMOVAL, ChangeKind.SKILL_REMOVAL}
 
 
 def _tool_target(change_kind: ChangeKind, target_id: str | None) -> str | None:
@@ -794,13 +908,13 @@ def _tool_target(change_kind: ChangeKind, target_id: str | None) -> str | None:
     )
 
 
-def _capability_target(change_kind: ChangeKind, target_id: str | None) -> str | None:
+def _skill_target(change_kind: ChangeKind, target_id: str | None) -> str | None:
     return (
         target_id
         if change_kind
         in {
-            ChangeKind.CAPABILITY_ADDITION,
-            ChangeKind.CAPABILITY_REMOVAL,
+            ChangeKind.SKILL_ADDITION,
+            ChangeKind.SKILL_REMOVAL,
         }
         else None
     )
@@ -830,13 +944,23 @@ def _updated_references(
     removed_ids: set[str] = set()
     if base_artifact is not None and _replacement_target(change_kind):
         removed_ids.add(base_artifact.artifact_id)
-    if change_kind in {ChangeKind.TOOL_REMOVAL, ChangeKind.CAPABILITY_REMOVAL}:
+    if change_kind in {ChangeKind.TOOL_REMOVAL, ChangeKind.SKILL_REMOVAL}:
         removed_ids.update(
             reference.artifact_id
             for reference in parent_refs
             if target_id and _reference_matches_target(reference, target_id)
         )
-    result = [reference for reference in parent_refs if reference.artifact_id not in removed_ids]
+    result = [
+        reference
+        for reference in parent_refs
+        if reference.artifact_id not in removed_ids
+        and not (
+            replacement is not None
+            and _replacement_target(change_kind)
+            and target_id is not None
+            and _reference_matches_target(reference, target_id)
+        )
+    ]
     if replacement is not None:
         result.append(replacement.to_reference())
     if not result:
@@ -862,12 +986,12 @@ def _candidate_from_change(
         {ChangeKind.TOOL_ADDITION},
         {ChangeKind.TOOL_REMOVAL},
     )
-    capabilities = _update_component_ids(
-        parent.capabilities,
+    skills = _update_component_ids(
+        parent.skills,
         target_id,
         change.change_kind,
-        {ChangeKind.CAPABILITY_ADDITION},
-        {ChangeKind.CAPABILITY_REMOVAL},
+        {ChangeKind.SKILL_ADDITION},
+        {ChangeKind.SKILL_REMOVAL},
     )
     policies = _update_component_ids(
         parent.policies,
@@ -881,6 +1005,13 @@ def _candidate_from_change(
             ChangeKind.PERMISSION_CHANGE,
             ChangeKind.APPROVAL_RULE_CHANGE,
         },
+    )
+    tool_bindings = _update_component_ids(
+        parent.tool_bindings,
+        target_id,
+        change.change_kind,
+        {ChangeKind.TOOL_ADDITION, ChangeKind.TOOL_CONFIGURATION_CHANGE},
+        {ChangeKind.TOOL_REMOVAL},
     )
     configuration_field = {
         ChangeKind.MODEL_CHANGE: "model_configuration",
@@ -899,10 +1030,21 @@ def _candidate_from_change(
         "agent_version": parent.agent_version,
         "parent_candidate_id": parent.candidate_id,
         "artifacts": references,
+        "prompt_ref": (
+            replacement.to_reference()
+            if replacement is not None
+            and replacement.kind
+            in {
+                CandidateArtifactKind.SYSTEM_PROMPT,
+                CandidateArtifactKind.DEVELOPER_PROMPT,
+                CandidateArtifactKind.USER_TEMPLATE,
+            }
+            else parent.prompt_ref
+        ),
         "runtime_profile": parent.runtime_profile,
         "tools": tools,
-        "tool_bindings": parent.tool_bindings,
-        "capabilities": capabilities,
+        "tool_bindings": tool_bindings,
+        "skills": skills,
         "policies": policies,
         "model_configuration": parent.model_configuration,
         "memory_configuration": parent.memory_configuration,
@@ -926,10 +1068,6 @@ def _candidate_from_change(
     )
     if configuration_field is not None and replacement is not None:
         values[configuration_field] = replacement.artifact_id
-    if change.change_kind in {ChangeKind.TOOL_ADDITION, ChangeKind.TOOL_CONFIGURATION_CHANGE}:
-        values["tool_bindings"] = _append_or_replace(
-            parent.tool_bindings, target_id or replacement.artifact_id if replacement else None
-        )
     return EnterpriseAgentCandidate(**values)
 
 
@@ -952,12 +1090,6 @@ def _update_component_ids(
     if replace_policy and target_id not in result:
         result.append(target_id)
     return tuple(result)
-
-
-def _append_or_replace(values: Sequence[str], value: str | None) -> tuple[str, ...]:
-    if value is None:
-        return tuple(values)
-    return tuple(values) if value in values else (*values, value)
 
 
 def _diff(
@@ -1054,6 +1186,13 @@ def _next_version(version: str) -> str:
     return ".".join(str(part) for part in parts)
 
 
+def _version_key(version: str) -> tuple[int, ...]:
+    """Return a comparable version key for two- or three-part Lab versions."""
+
+    parts = tuple(int(part) for part in version.split("."))
+    return parts if len(parts) == 3 else (*parts, 0)
+
+
 def _change_kind_from_decision(value: str) -> ChangeKind | None:
     try:
         return ChangeKind(value)
@@ -1071,7 +1210,7 @@ def render_candidate_diff(candidate: EnterpriseAgentCandidate) -> str:
             "affected_agent_id": change.affected_agent_id,
             "affected_artifact_id": change.affected_artifact_id,
             "affected_tool_id": change.affected_tool_id,
-            "affected_capability_id": change.affected_capability_id,
+            "affected_skill_id": change.affected_skill_id,
             "affected_policy_id": change.affected_policy_id,
             "changed_paths": change.changed_paths,
             "rationale": change.rationale,
@@ -1097,7 +1236,7 @@ __all__ = [
     "CandidateBuildRequest",
     "CandidateBuildResult",
     "CandidateBuilderError",
-    "CapabilityCandidateBuilder",
+    "SkillCandidateBuilder",
     "ModelCandidateBuilder",
     "PolicyCandidateBuilder",
     "PromptCandidateBuilder",

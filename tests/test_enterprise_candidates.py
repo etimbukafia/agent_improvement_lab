@@ -81,7 +81,7 @@ def _candidate(
         runtime_profile="worker-profile-1",
         tools=("orders.read", "orders.write"),
         tool_bindings=("tool-binding-2",),
-        capabilities=("order-management",),
+        skills=("order-management",),
         policies=("refund-policy-1",),
         model_configuration="model-config-2",
         memory_configuration="memory-config-1",
@@ -158,7 +158,7 @@ def test_artifact_checksum_is_stable_and_content_changes_are_rejected(created_at
         )
 
 
-def test_enterprise_candidate_references_tools_policies_capabilities_and_runtime(
+def test_enterprise_candidate_references_tools_policies_skills_and_runtime(
     created_at: datetime,
 ):
     candidate = _candidate(created_at)
@@ -167,7 +167,7 @@ def test_enterprise_candidate_references_tools_policies_capabilities_and_runtime
     assert candidate.runtime_profile == "worker-profile-1"
     assert candidate.tools == ("orders.read", "orders.write")
     assert candidate.tool_bindings == ("tool-binding-2",)
-    assert candidate.capabilities == ("order-management",)
+    assert candidate.skills == ("order-management",)
     assert candidate.policies == ("refund-policy-1",)
     assert candidate.model_configuration == "model-config-2"
     assert candidate.memory_configuration == "memory-config-1"

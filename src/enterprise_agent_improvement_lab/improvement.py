@@ -91,9 +91,9 @@ class RootCauseAnalyzer:
             _common_value(tuple(failure.affected_component for failure in grouped))
             or cluster.affected_component
         )
-        target_capability = (
-            _common_value(tuple(failure.affected_capability for failure in grouped))
-            or cluster.affected_capability
+        target_skill = (
+            _common_value(tuple(failure.affected_skill for failure in grouped))
+            or cluster.affected_skill
         )
         target_tool = (
             _common_value(tuple(failure.affected_tool for failure in grouped))
@@ -112,7 +112,7 @@ class RootCauseAnalyzer:
             value is not None
             for value in (
                 target_component,
-                target_capability,
+                target_skill,
                 target_tool,
                 target_policy,
                 target_workflow,
@@ -136,7 +136,7 @@ class RootCauseAnalyzer:
                 source_cluster_id=cluster.cluster_id,
                 affected_agent_id=agent_id,
                 affected_component=target_component,
-                affected_capability=target_capability,
+                affected_skill=target_skill,
                 affected_tool=target_tool,
                 affected_policy=target_policy,
                 affected_workflow=target_workflow,
@@ -185,7 +185,7 @@ class ImprovementPlanner:
         prior_experiments: Sequence[PriorExperimentEvidence] = (),
         *,
         approved_tools: Sequence[str] = (),
-        approved_capabilities: Sequence[str] = (),
+        approved_skills: Sequence[str] = (),
         created_at: datetime | None = None,
     ) -> ImprovementPlan:
         """Return a scope-checked and evidence-linked improvement plan."""
@@ -231,7 +231,7 @@ class ImprovementPlanner:
             scope,
             current_candidate,
             approved_tools=approved_tools,
-            approved_capabilities=approved_capabilities,
+            approved_skills=approved_skills,
         )
         if decision is None:
             return self._human_review_plan(
@@ -267,10 +267,8 @@ class ImprovementPlanner:
         }
         if decision == ImprovementDecision.TOOL_ADDITION and hypothesis.affected_tool:
             metadata["approved_tool"] = str(hypothesis.affected_tool in set(approved_tools))
-        if decision == ImprovementDecision.CAPABILITY_ADDITION and hypothesis.affected_capability:
-            metadata["approved_capability"] = str(
-                hypothesis.affected_capability in set(approved_capabilities)
-            )
+        if decision == ImprovementDecision.SKILL_ADDITION and hypothesis.affected_skill:
+            metadata["approved_skill"] = str(hypothesis.affected_skill in set(approved_skills))
 
         return ImprovementPlan(
             plan_id=_plan_id(
@@ -310,7 +308,7 @@ class ImprovementPlanner:
         candidate: EnterpriseAgentCandidate,
         *,
         approved_tools: Sequence[str],
-        approved_capabilities: Sequence[str],
+        approved_skills: Sequence[str],
     ) -> ImprovementDecision | None:
         for kind in hypothesis.suggested_intervention_classes:
             decision = ImprovementDecision.from_change_kind(kind)
@@ -326,18 +324,15 @@ class ImprovementPlanner:
                 *candidate.tool_bindings,
             }:
                 continue
-            if kind == ChangeKind.CAPABILITY_ADDITION and hypothesis.affected_capability in set(
-                candidate.capabilities
+            if kind == ChangeKind.SKILL_ADDITION and hypothesis.affected_skill in set(
+                candidate.skills
             ):
                 continue
             if kind == ChangeKind.TOOL_ADDITION and hypothesis.affected_tool:
                 if approved_tools and hypothesis.affected_tool not in approved_tools:
                     continue
-            if kind == ChangeKind.CAPABILITY_ADDITION and hypothesis.affected_capability:
-                if (
-                    approved_capabilities
-                    and hypothesis.affected_capability not in approved_capabilities
-                ):
+            if kind == ChangeKind.SKILL_ADDITION and hypothesis.affected_skill:
+                if approved_skills and hypothesis.affected_skill not in approved_skills:
                     continue
             return decision
         return None
@@ -461,12 +456,11 @@ def _rule_for(
         FailureCategory.TOOL_EXECUTION,
         FailureCategory.INTEGRATION,
     }:
-        if any(failure.affected_capability for failure in failures):
+        if any(failure.affected_skill for failure in failures):
             return (
-                "missing-capability",
-                "The required capability was not available or was not selected for the "
-                "observed task.",
-                (ChangeKind.CAPABILITY_ADDITION, ChangeKind.TOOL_ADDITION),
+                "missing-skill",
+                "The required skill was not available or was not selected for the observed task.",
+                (ChangeKind.SKILL_ADDITION, ChangeKind.TOOL_ADDITION),
                 0.82,
             )
         return (
@@ -497,9 +491,9 @@ def _rule_for(
     if category == FailureCategory.DELEGATION:
         return (
             "delegation-routing",
-            "The delegation path or delegated capability did not satisfy the recorded "
+            "The delegation path or delegated skill did not satisfy the recorded "
             "interaction boundary.",
-            (ChangeKind.ROUTING_CHANGE, ChangeKind.CAPABILITY_ADDITION),
+            (ChangeKind.ROUTING_CHANGE, ChangeKind.SKILL_ADDITION),
             0.75,
         )
     return (
@@ -533,19 +527,16 @@ def _scope_allows(
         return False
     if hypothesis.affected_agent_id and hypothesis.affected_agent_id != agent_id:
         return False
-    if (
-        hypothesis.affected_capability
-        and hypothesis.affected_capability in scope.protected_capabilities
-    ):
+    if hypothesis.affected_skill and hypothesis.affected_skill in scope.protected_skills:
         return False
     if hypothesis.affected_tool and hypothesis.affected_tool in scope.protected_tools:
         return False
     if hypothesis.affected_policy and hypothesis.affected_policy in scope.protected_policies:
         return False
     if (
-        scope.allowed_capabilities
-        and hypothesis.affected_capability
-        and hypothesis.affected_capability not in scope.allowed_capabilities
+        scope.allowed_skills
+        and hypothesis.affected_skill
+        and hypothesis.affected_skill not in scope.allowed_skills
     ):
         return False
     if (
@@ -584,8 +575,8 @@ def _builder_type(decision: ImprovementDecision) -> str:
         ImprovementDecision.MEMORY_CHANGE: "PolicyCandidateBuilder",
         ImprovementDecision.THRESHOLD_CHANGE: "ThresholdCandidateBuilder",
         ImprovementDecision.WORKFLOW_CHANGE: "WorkflowCandidateBuilder",
-        ImprovementDecision.CAPABILITY_ADDITION: "CapabilityCandidateBuilder",
-        ImprovementDecision.CAPABILITY_REMOVAL: "CapabilityCandidateBuilder",
+        ImprovementDecision.SKILL_ADDITION: "SkillCandidateBuilder",
+        ImprovementDecision.SKILL_REMOVAL: "SkillCandidateBuilder",
         ImprovementDecision.APPROVAL_RULE_CHANGE: "ApprovalRuleCandidateBuilder",
     }.get(decision, "none")
 

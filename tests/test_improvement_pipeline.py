@@ -6,11 +6,11 @@ import pytest
 
 from enterprise_agent_improvement_lab.candidate_builders import (
     ApprovalRuleCandidateBuilder,
-    CapabilityCandidateBuilder,
     ModelCandidateBuilder,
     PolicyCandidateBuilder,
     PromptCandidateBuilder,
     RoutingCandidateBuilder,
+    SkillCandidateBuilder,
     ThresholdCandidateBuilder,
     ToolBindingCandidateBuilder,
     WorkflowCandidateBuilder,
@@ -62,7 +62,7 @@ def _candidate(artifact: CandidateArtifact | None = None) -> EnterpriseAgentCand
         version="1.0.0",
         artifacts=(artifact.to_reference(),),
         tools=("orders.read",),
-        capabilities=("order-review",),
+        skills=("order-review",),
         policies=("orders-policy",),
     )
 
@@ -73,7 +73,7 @@ def _scope(*kinds: ChangeKind, **updates: object) -> ImprovementScope:
         "allowed_change_kinds": kinds or tuple(ChangeKind),
         "allowed_agents": ("agent-1",),
         "allowed_tools": ("orders.read", "orders.write"),
-        "allowed_capabilities": ("order-review", "order-write"),
+        "allowed_skills": ("order-review", "order-write"),
         "allowed_policies": ("orders-policy",),
         "allowed_artifact_kinds": tuple(CandidateArtifactKind),
         "allowed_configuration_paths": (
@@ -235,11 +235,11 @@ def test_planner_selects_the_allowed_typed_intervention() -> None:
             ("$.approval",),
         ),
         (
-            CapabilityCandidateBuilder(),
-            ChangeKind.CAPABILITY_ADDITION,
-            CandidateArtifactKind.CAPABILITY_CONFIGURATION,
+            SkillCandidateBuilder(),
+            ChangeKind.SKILL_ADDITION,
+            CandidateArtifactKind.SKILL_CONFIGURATION,
             "order-write",
-            '{"capability_id":"order-write"}',
+            '{"skill_id":"order-write"}',
             ("$",),
         ),
     ),
@@ -256,7 +256,7 @@ def test_specialized_builders_create_reproducible_lineage(
         _artifact("prompt-1", artifact_kind, "Answer clearly.")
         if kind is ChangeKind.PROMPT_CHANGE
         else None
-        if kind is ChangeKind.CAPABILITY_ADDITION
+        if kind is ChangeKind.SKILL_ADDITION
         else _artifact(target_id, artifact_kind, '{"baseline":true}')
     )
     parent = _candidate(base) if base is not None else _candidate()
@@ -272,7 +272,7 @@ def test_specialized_builders_create_reproducible_lineage(
         target_kind=artifact_kind,
         replacement_content=content,
         target_registry_reference=(
-            f"capability:{target_id}@1.0.0" if kind is ChangeKind.CAPABILITY_ADDITION else None
+            f"skill:{target_id}@1.0.0" if kind is ChangeKind.SKILL_ADDITION else None
         ),
         changed_paths=paths,
         created_at=NOW,
@@ -294,7 +294,7 @@ def test_specialized_builders_create_reproducible_lineage(
             target_kind=artifact_kind,
             replacement_content=content,
             target_registry_reference=(
-                f"capability:{target_id}@1.0.0" if kind is ChangeKind.CAPABILITY_ADDITION else None
+                f"skill:{target_id}@1.0.0" if kind is ChangeKind.SKILL_ADDITION else None
             ),
             changed_paths=paths,
             created_at=NOW,

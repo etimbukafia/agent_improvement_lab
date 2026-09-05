@@ -63,7 +63,7 @@ Evaluation support includes enterprise checks for:
 
 - Typed `ImprovementPlan` decisions.
 - Explicit `ImprovementScope` boundaries.
-- Support for prompt, tool, policy, permission, routing, model, retrieval, memory, workflow, capability, threshold, and approval-rule changes.
+- Support for prompt, skill, tool, policy, permission, routing, model, retrieval, memory, workflow, threshold, and approval-rule changes.
 - Human review when evidence is insufficient.
 
 ### Bounded candidate construction
@@ -150,7 +150,7 @@ Secrets and raw credentials must not be persisted as evaluation evidence.
 
 ### Enterprise Agent Harness integration
 
-Enterprise Agent Harness remains outside the Lab core.
+[Enterprise Agent Harness](https://github.com/etimbukafia/enterprise-agent-harness) remains outside the Lab core.
 
 The integration boundary can translate enterprise agent definitions, registry identity, runtime evidence, approvals, delegation, tools, policies, and execution traces into Lab contracts.
 
